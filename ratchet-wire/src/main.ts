@@ -3,9 +3,9 @@
  * Double Ratchet Algorithm Visualization
  */
 
-import '../style.css';
+import './style.css';
 import { RatchetState } from './crypto/dh-ratchet';
-import { Message, encrypt, decrypt } from './crypto/double-ratchet';
+import { encrypt, decrypt } from './crypto/double-ratchet';
 import { generateKeyPair } from './crypto/x25519';
 import {
   AliceSessionInitKeys,
@@ -47,8 +47,6 @@ class RatchetWireApp {
   // UI Elements
   private messagesContainer!: HTMLDivElement;
   private messageInput!: HTMLInputElement;
-  private sendBtn!: HTMLButtonElement;
-  private senderRadios!: NodeListOf<HTMLInputElement>;
   private tabButtons!: NodeListOf<HTMLButtonElement>;
   private tabContents!: NodeListOf<HTMLDivElement>;
 
@@ -108,10 +106,6 @@ class RatchetWireApp {
     // Grab references
     this.messagesContainer = document.getElementById('messages') as HTMLDivElement;
     this.messageInput = document.getElementById('message-input') as HTMLInputElement;
-    this.sendBtn = document.getElementById('send-btn') as HTMLButtonElement;
-    this.senderRadios = document.querySelectorAll(
-      'input[name="sender"]'
-    ) as NodeListOf<HTMLInputElement>;
     this.tabButtons = document.querySelectorAll('.tab-btn') as NodeListOf<HTMLButtonElement>;
     this.tabContents = document.querySelectorAll('.tab-content') as NodeListOf<HTMLDivElement>;
 
