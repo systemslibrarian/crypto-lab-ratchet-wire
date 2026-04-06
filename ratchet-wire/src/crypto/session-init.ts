@@ -14,7 +14,7 @@
  * which becomes the root key for the Double Ratchet Algorithm.
  */
 
-import { generateKeyPair, deriveSharedSecret, exportPublicKeyRaw, importPublicKeyRaw } from './x25519';
+import { deriveSharedSecret } from './x25519';
 import { hkdf, DOMAIN_LABELS } from './hkdf';
 import { RatchetState } from './dh-ratchet';
 

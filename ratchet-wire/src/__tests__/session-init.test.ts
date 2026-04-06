@@ -2,7 +2,7 @@
  * Tests for Simplified X3DH Session Initialization
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   initiateSessionX3DH,
   acceptSessionX3DH,
@@ -93,10 +93,14 @@ describe('Simplified X3DH Session Initialization', () => {
     // Both should have the same root key
     expect(aliceState.rootKey).toEqual(bobState.rootKey);
 
-    // Alice's sending chain should match Bob's receiving chain (for chain keys)
-    expect(aliceState.initialChainKeyAlice).toEqual(bobState.initialChainKeyBob);
-    // Bob's sending chain should match Alice's receiving chain
-    expect(bobState.initialChainKeyBob).toEqual(aliceState.initialChainKeyAlice);
+    // Alice's sending chain key should match Bob's receiving chain key
+    expect(new Uint8Array(aliceState.sendingChain.chainKey)).toEqual(
+      new Uint8Array(bobState.receivingChain.chainKey)
+    );
+    // Bob's sending chain key should match Alice's receiving chain key
+    expect(new Uint8Array(bobState.sendingChain.chainKey)).toEqual(
+      new Uint8Array(aliceState.receivingChain.chainKey)
+    );
   });
 
   it('should produce different root keys for different ephemeral keys', async () => {

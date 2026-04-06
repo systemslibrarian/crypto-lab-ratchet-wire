@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ratchetStep, ChainState, MessageKey } from '../crypto/symmetric-ratchet';
+import { ratchetStep, ChainState } from '../crypto/symmetric-ratchet';
 
 describe('Symmetric-Key Ratchet (Message Keys)', () => {
   it('should derive a valid message key from chain state', async () => {

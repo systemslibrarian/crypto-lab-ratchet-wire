@@ -112,7 +112,6 @@ describe('Double Ratchet Integration', () => {
   });
 
   it('should handle out-of-order delivery', async () => {
-    const aliceSkippedKeys = new Map<string, ArrayBuffer>();
     const bobSkippedKeys = new Map<string, ArrayBuffer>();
 
     // Alice sends 3 messages
@@ -140,7 +139,6 @@ describe('Double Ratchet Integration', () => {
   });
 
   it('should update DH ratchet when sender key changes', async () => {
-    const aliceSkippedKeys = new Map<string, ArrayBuffer>();
     const bobSkippedKeys = new Map<string, ArrayBuffer>();
 
     const initialAliceDHRatchetCount = aliceState.dhRatchetCount;

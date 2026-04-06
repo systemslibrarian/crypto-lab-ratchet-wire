@@ -83,7 +83,7 @@ export async function dhRatchetStep(
 
   // Step 5: Derive root and sending chain keys from second DH
   const rootAndSendingChainMaterial = await hkdf(
-    new Uint8Array(newRootKeyBuffer),
+    newRootKeyBuffer,
     dh2,
     DOMAIN_LABELS.ROOT,
     64 // 32 bytes root + 32 bytes chain key

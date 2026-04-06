@@ -8,7 +8,7 @@
  * Handles encryption, decryption, and out-of-order message delivery.
  */
 
-import { ratchetStep, ChainState, MessageKey, clearKey } from './symmetric-ratchet';
+import { ratchetStep, ChainState, clearKey } from './symmetric-ratchet';
 import { dhRatchetStep, RatchetState } from './dh-ratchet';
 import { exportPublicKeyRaw, importPublicKeyRaw } from './x25519';
 
@@ -154,7 +154,7 @@ export async function decrypt(
 
       // Cap skipped key storage
       if (skippedKeys.size > 1000) {
-        const firstKey = skippedKeys.keys().next().value;
+        const firstKey = skippedKeys.keys().next().value!;
         skippedKeys.delete(firstKey);
       }
 
@@ -203,7 +203,7 @@ async function skipMessageKeys(
 
     // Prevent unbounded memory growth
     if (skippedKeys.size > 1000) {
-      const firstKey = skippedKeys.keys().next().value;
+      const firstKey = skippedKeys.keys().next().value!;
       skippedKeys.delete(firstKey);
     }
 
