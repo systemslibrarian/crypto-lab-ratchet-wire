@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d1117" />
+    <meta name="description" content="Interactive visualization of the Double Ratchet Algorithm used in Signal, WhatsApp, and Google Messages." />
+    <title>Ratchet Wire - Double Ratchet Algorithm Demo</title>
+  </head>
+  <body>
+    <!-- Skip navigation link for keyboard/screen-reader users -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <div id="app">
+      <header class="header" role="banner">
+        <h1><span aria-hidden="true">🔐 </span>Ratchet Wire</h1>
+        <p class="subtitle">Double Ratchet Algorithm Visualizer</p>
+      </header>
+
+      <div class="container">
+        <nav class="tabs" aria-label="Demo sections">
+          <div role="tablist" aria-label="Demo tabs">
+            <button
+              class="tab-btn active"
+              data-tab="conversation"
+              role="tab"
+              id="tab-conversation"
+              aria-selected="true"
+              aria-controls="conversation"
+            >
+              Conversation
+            </button>
+            <button
+              class="tab-btn"
+              data-tab="state"
+              role="tab"
+              id="tab-state"
+              aria-selected="false"
+              aria-controls="state"
+              tabindex="-1"
+            >
+              Ratchet State
+            </button>
+            <button
+              class="tab-btn"
+              data-tab="compromise"
+              role="tab"
+              id="tab-compromise"
+              aria-selected="false"
+              aria-controls="compromise"
+              tabindex="-1"
+            >
+              Break-In Recovery
+            </button>
+            <button
+              class="tab-btn"
+              data-tab="about"
+              role="tab"
+              id="tab-about"
+              aria-selected="false"
+              aria-controls="about"
+              tabindex="-1"
+            >
+              How It Works
+            </button>
+          </div>
+        </nav>
+
+        <main id="main-content">
+          <!-- Tab 1: Live Conversation -->
+          <div
+            id="conversation"
+            class="tab-content active"
+            role="tabpanel"
+            aria-labelledby="tab-conversation"
+            tabindex="0"
+          >
+            <div class="conversation-layout">
+              <div class="conversation-panel">
+                <div
+                  class="messages-container"
+                  id="messages"
+                  role="log"
+                  aria-live="polite"
+                  aria-label="Conversation messages"
+                  tabindex="0"
+                >
+                  <p class="empty-state">Send a message to begin the conversation.</p>
+                </div>
+                <form class="input-controls" id="message-form" aria-label="Send a message">
+                  <fieldset class="sender-selector">
+                    <legend class="sr-only">Choose sender</legend>
+                    <label class="sender-option">
+                      <input type="radio" name="sender" value="alice" checked />
+                      <span class="sender-label sender-label-alice">Alice</span>
+                    </label>
+                    <label class="sender-option">
+                      <input type="radio" name="sender" value="bob" />
+                      <span class="sender-label sender-label-bob">Bob</span>
+                    </label>
+                  </fieldset>
+                  <div class="input-row">
+                    <label for="message-input" class="sr-only">Message text</label>
+                    <input
+                      type="text"
+                      id="message-input"
+                      class="message-input"
+                      placeholder="Type a message..."
+                      autocomplete="off"
+                    />
+                    <button id="send-btn" type="submit" class="btn btn-primary" aria-label="Send message">
+                      Send
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <aside class="state-panel" aria-label="Live key state">
+                <h3>Key State</h3>
+                <div class="key-state" aria-live="polite" aria-atomic="true">
+                  <div class="party-state alice">
+                    <h4>Alice</h4>
+                    <dl class="state-info">
+                      <div class="state-item">
+                        <dt class="state-label">Root Key</dt>
+                        <dd class="state-value" id="alice-root-key">—</dd>
+                      </div>
+                      <div class="state-item">
+                        <dt class="state-label">Chain (Send)</dt>
+                        <dd class="state-value" id="alice-send-chain">—</dd>
+                      </div>
+                      <div class="state-item">
+                        <dt class="state-label">Message #</dt>
+                        <dd class="state-value" id="alice-msg-num">0</dd>
+                      </div>
+                      <div class="state-item">
+                        <dt class="state-label">DH Ratchets</dt>
+                        <dd class="state-value" id="alice-dh-count">0</dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  <div class="party-state bob">
+                    <h4>Bob</h4>
+                    <dl class="state-info">
+                      <div class="state-item">
+                        <dt class="state-label">Root Key</dt>
+                        <dd class="state-value" id="bob-root-key">—</dd>
+                      </div>
+                      <div class="state-item">
+                        <dt class="state-label">Chain (Send)</dt>
+                        <dd class="state-value" id="bob-send-chain">—</dd>
+                      </div>
+                      <div class="state-item">
+                        <dt class="state-label">Message #</dt>
+                        <dd class="state-value" id="bob-msg-num">0</dd>
+                      </div>
+                      <div class="state-item">
+                        <dt class="state-label">DH Ratchets</dt>
+                        <dd class="state-value" id="bob-dh-count">0</dd>
+                      </div>
+                    </dl>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
+
+          <!-- Tab 2: Ratchet State Visualization -->
+          <div
+            id="state"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="tab-state"
+            tabindex="0"
+            hidden
+          >
+            <div class="state-viz">
+              <section class="ratchet-diagram" aria-label="DH ratchet step visualization">
+                <h3>DH Ratchet Steps</h3>
+                <div
+                  class="ratchet-teeth"
+                  id="ratchet-teeth"
+                  role="img"
+                  aria-label="Bar chart showing DH ratchet steps: past steps grayed out, current step highlighted, future steps empty"
+                ></div>
+                <p class="diagram-note">Each bar = one DH ratchet step. Grayed out = deleted root keys.</p>
+              </section>
+
+              <section class="chain-diagram" aria-label="Message key derivation chain">
+                <h3>Message Key Derivation Chain</h3>
+                <div class="chain-visual" id="chain-visual" role="img" aria-label="Chain key derives message key, then advances to next chain key. This repeats for each message.">
+                  <div class="chain-row">
+                    <span class="chain-label">Chain Key</span>
+                    <span class="chain-item">CK</span>
+                    <span class="arrow" aria-hidden="true">→</span>
+                    <span class="chain-branch">
+                      <span class="chain-branch-item">MK[0]</span>
+                    </span>
+                  </div>
+                  <div class="chain-row">
+                    <span class="chain-label"><span aria-hidden="true">→ </span>Next CK</span>
+                    <span class="chain-item">CK'</span>
+                    <span class="arrow" aria-hidden="true">→</span>
+                    <span class="chain-branch">
+                      <span class="chain-branch-item">MK[1]</span>
+                    </span>
+                  </div>
+                  <div class="chain-row">
+                    <span class="chain-label"><span aria-hidden="true">→ </span>Next CK</span>
+                    <span class="chain-item">CK''</span>
+                    <span class="arrow" aria-hidden="true">→</span>
+                    <span class="chain-branch">
+                      <span class="chain-branch-item">MK[2]</span>
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="stats-panel" aria-label="Live ratchet statistics">
+                <h3>Live Statistics</h3>
+                <dl class="stats">
+                  <div class="stat">
+                    <dt class="stat-label">Total Messages Sent</dt>
+                    <dd class="stat-value" id="stat-messages">0</dd>
+                  </div>
+                  <div class="stat">
+                    <dt class="stat-label">Alice DH Steps</dt>
+                    <dd class="stat-value" id="stat-alice-dh">0</dd>
+                  </div>
+                  <div class="stat">
+                    <dt class="stat-label">Bob DH Steps</dt>
+                    <dd class="stat-value" id="stat-bob-dh">0</dd>
+                  </div>
+                  <div class="stat">
+                    <dt class="stat-label">Keys in Memory</dt>
+                    <dd class="stat-value" id="stat-keys-memory">0</dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
+          </div>
+
+          <!-- Tab 3: Key Compromise Simulation -->
+          <div
+            id="compromise"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="tab-compromise"
+            tabindex="0"
+            hidden
+          >
+            <div class="compromise-panel">
+              <h3>Break-In Recovery Simulation</h3>
+              <p class="panel-desc">
+                Demonstrates how the Double Ratchet recovers from key compromise.
+              </p>
+
+              <div class="compromise-sim" aria-live="polite">
+                <section class="sim-section" aria-label="Step 1: Compromise">
+                  <h4>Step 1: Compromise Bob's State</h4>
+                  <button id="compromise-btn" class="btn btn-danger" aria-describedby="compromise-desc">
+                    <span aria-hidden="true">🔓 </span>Compromise Bob's Keys
+                  </button>
+                  <p id="compromise-desc" class="sr-only">Simulates an attacker gaining access to Bob's current root key and chain keys</p>
+                  <div class="sim-state" id="compromise-status" hidden>
+                    <p class="warning" role="alert">
+                      <span aria-hidden="true">⚠️ </span>Attacker has compromised Bob's root key and chain keys!
+                    </p>
+                    <div class="attacker-access">
+                      <p><strong>Attacker can read:</strong></p>
+                      <ul>
+                        <li>Current and future messages from Bob's sending chain</li>
+                        <li>Current and future messages from Alice's receiving chain</li>
+                      </ul>
+                      <p><strong>Attacker cannot read:</strong></p>
+                      <ul>
+                        <li>Past messages (message keys already deleted via forward secrecy)</li>
+                        <li>Messages after Alice triggers DH ratchet</li>
+                      </ul>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="sim-section" aria-label="Step 2: Recovery trigger">
+                  <h4>Step 2: Alice Sends (Triggers DH Ratchet)</h4>
+                  <button id="recovery-send-btn" class="btn btn-success" disabled aria-describedby="recovery-send-desc">
+                    <span aria-hidden="true">📨 </span>Alice Sends Message
+                  </button>
+                  <p id="recovery-send-desc" class="sr-only">Alice sends a message which triggers a DH ratchet step with fresh keys</p>
+                  <div class="sim-state" id="recovery-status" hidden>
+                    <p class="success" role="status">
+                      <span aria-hidden="true">✓ </span>Alice sent a message with a new DH key!
+                    </p>
+                    <p class="recovery-note">This triggers a DH ratchet step on the next message receive.</p>
+                  </div>
+                </section>
+
+                <section class="sim-section" aria-label="Step 3: Recovery complete">
+                  <h4>Step 3: Recovery Complete</h4>
+                  <button id="recovery-complete-btn" class="btn btn-success" disabled aria-describedby="recovery-complete-desc">
+                    <span aria-hidden="true">🔒 </span>Bob Receives (DH Ratchet)
+                  </button>
+                  <p id="recovery-complete-desc" class="sr-only">Bob receives the message and performs a DH ratchet, locking out the attacker</p>
+                  <div class="sim-state" id="recovery-complete-status" hidden>
+                    <p class="success" role="status">
+                      <span aria-hidden="true">✓ </span>Break-in recovery complete!
+                    </p>
+                    <p class="recovery-explanation">
+                      Bob's new root key is derived from fresh DH with Alice's new ephemeral key.
+                      The attacker cannot compute this without the private keys.
+                    </p>
+                  </div>
+                </section>
+              </div>
+
+              <section class="compromise-explanation" aria-label="Explanation of break-in recovery">
+                <h4>Why This Works</h4>
+                <p>
+                  The Double Ratchet's <strong>break-in recovery</strong> works because:
+                </p>
+                <ul>
+                  <li>
+                    <strong>DH Ratchet:</strong> Each DH step uses fresh ephemeral keys, making it
+                    impossible for an attacker holding old keys to derive new root keys.
+                  </li>
+                  <li>
+                    <strong>Asymmetry:</strong> An attacker needs the <em>private keys</em> to
+                    compute DH, not just public keys.
+                  </li>
+                  <li>
+                    <strong>Forward Secrecy:</strong> Old message keys are deleted immediately,
+                    so past messages remain secure even if the root key is compromised.
+                  </li>
+                </ul>
+              </section>
+            </div>
+          </div>
+
+          <!-- Tab 4: How It Works -->
+          <div
+            id="about"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="tab-about"
+            tabindex="0"
+            hidden
+          >
+            <article class="about-content">
+              <h2>The Double Ratchet Algorithm</h2>
+
+              <section>
+                <h3>Overview</h3>
+                <p>
+                  The Double Ratchet (also called the "X3DH + Double Ratchet" protocol) is used by
+                  <strong>Signal, WhatsApp, and Google Messages</strong> to provide:
+                </p>
+                <ul>
+                  <li><strong>Forward Secrecy:</strong> Old messages stay secure even if keys leak</li>
+                  <li><strong>Break-in Recovery:</strong> New messages become secure after key changes</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>Two Ratchets</h3>
+                <div class="comparison-table" tabindex="0" role="region" aria-label="Comparison of ratchet types">
+                  <table>
+                    <caption class="sr-only">Comparison of Symmetric Ratchet and DH Ratchet</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Ratchet</th>
+                        <th scope="col">Purpose</th>
+                        <th scope="col">Trigger</th>
+                        <th scope="col">Output</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <th scope="row"><strong>Symmetric Ratchet</strong></th>
+                        <td>Forward Secrecy</td>
+                        <td>Every message sent</td>
+                        <td>Unique message key</td>
+                      </tr>
+                      <tr>
+                        <th scope="row"><strong>DH Ratchet</strong></th>
+                        <td>Break-in Recovery</td>
+                        <td>Direction change</td>
+                        <td>New root + chain keys</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <h4>Symmetric Ratchet:</h4>
+                <p>Uses HKDF to derive a unique message key from a chain key:</p>
+                <pre><code>
+MK[n] = HKDF(CK[n], salt=0x01, "ratchet-wire-message")
+CK[n+1] = HKDF(CK[n], salt=0x02, "ratchet-wire-chain")
+                </code></pre>
+
+                <h4>DH Ratchet:</h4>
+                <p>Uses X25519 ephemeral key pairs to derive a new root key:</p>
+                <pre><code>
+root_new = HKDF(root_old, DH(my_private, their_public), "root")
+                </code></pre>
+              </section>
+
+              <section>
+                <h3>Key Properties</h3>
+                <ul>
+                  <li>
+                    <strong>One-way:</strong> Chain keys advance forward; you can't derive the
+                    previous chain key
+                  </li>
+                  <li>
+                    <strong>Deletable:</strong> Message keys are ephemeral; no stored history
+                  </li>
+                  <li>
+                    <strong>Testable:</strong> Both parties use the same HKDF labels, ensuring
+                    consistency
+                  </li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>This Demo vs. Production</h3>
+                <p><strong>Simplified (for demo):</strong></p>
+                <ul>
+                  <li>No signature verification (X3DH is simplified)</li>
+                  <li>No one-time prekeys (OPK) in X3DH</li>
+                  <li>In-memory state only (no persistence)</li>
+                </ul>
+
+                <p><strong>Production (Signal, WhatsApp):</strong></p>
+                <ul>
+                  <li>Full X3DH with server assistance</li>
+                  <li>Periodic prekey rotation</li>
+                  <li>Double Ratchet with out-of-order handling</li>
+                  <li>Persistent state and key management</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>References</h3>
+                <ul>
+                  <li>
+                    <a href="https://signal.org/docs/specifications/doubleratchet/" target="_blank" rel="noopener noreferrer">
+                      Signal Double Ratchet Specification
+                      <span class="sr-only">(opens in new tab)</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://signal.org/docs/specifications/x3dh/" target="_blank" rel="noopener noreferrer">
+                      Signal X3DH Specification
+                      <span class="sr-only">(opens in new tab)</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://tools.ietf.org/html/rfc5869" target="_blank" rel="noopener noreferrer">
+                      RFC 5869: HKDF
+                      <span class="sr-only">(opens in new tab)</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://tools.ietf.org/html/rfc7748" target="_blank" rel="noopener noreferrer">
+                      RFC 7748: X25519
+                      <span class="sr-only">(opens in new tab)</span>
+                    </a>
+                  </li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>Credits</h3>
+                <p>
+                  The Double Ratchet Algorithm was developed by
+                  <strong>Trevor Perrin and Moxie Marlinspike</strong> (2016), building on prior
+                  work in the
+                  <a href="https://otr.im/" target="_blank" rel="noopener noreferrer">
+                    Off-the-Record Messaging
+                    <span class="sr-only">(opens in new tab)</span>
+                  </a>
+                  protocol.
+                </p>
+              </section>
+            </article>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- Screen reader announcements -->
+    <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true">                    <td>Forward Secrecy</td>
+                        <td>Every message sent</td>
+                        <td>Unique message key</td>
+                      </tr>
+                      <tr>
+                        <th scope="row"><strong>DH Ratchet</strong></th>
+                        <td>Break-in Recovery</td>
+                        <td>Direction change</td>
+                        <td>New root + chain keys</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <h4>Symmetric Ratchet:</h4>
+                <p>Uses HKDF to derive a unique message key from a chain key:</p>
+                <pre><code>
+MK[n] = HKDF(CK[n], salt=0x01, "ratchet-wire-message")
+CK[n+1] = HKDF(CK[n], salt=0x02, "ratchet-wire-chain")
+                </code></pre>
+
+                <h4>DH Ratchet:</h4>
+                <p>Uses X25519 ephemeral key pairs to derive a new root key:</p>
+                <pre><code>
+root_new = HKDF(root_old, DH(my_private, their_public), "root")
+                </code></pre>
+              </section>
+
+              <section>
+                <h3>Key Properties</h3>
+                <ul>
+                  <li>
+                    <strong>One-way:</strong> Chain keys advance forward; you can't derive the
+                    previous chain key
+                  </li>
+                  <li>
+                    <strong>Deletable:</strong> Message keys are ephemeral; no stored history
+                  </li>
+                  <li>
+                    <strong>Testable:</strong> Both parties use the same HKDF labels, ensuring
+                    consistency
+                  </li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>This Demo vs. Production</h3>
+                <p><strong>Simplified (for demo):</strong></p>
+                <ul>
+                  <li>No signature verification (X3DH is simplified)</li>
+                  <li>No one-time prekeys (OPK) in X3DH</li>
+                  <li>In-memory state only (no persistence)</li>
+                </ul>
+
+                <p><strong>Production (Signal, WhatsApp):</strong></p>
+                <ul>
+                  <li>Full X3DH with server assistance</li>
+                  <li>Periodic prekey rotation</li>
+                  <li>Double Ratchet with out-of-order handling</li>
+                  <li>Persistent state and key management</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>References</h3>
+                <ul>
+                  <li>
+                    <a href="https://signal.org/docs/specifications/doubleratchet/" target="_blank" rel="noopener noreferrer">
+                      Signal Double Ratchet Specification
+                      <span class="sr-only">(opens in new tab)</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://signal.org/docs/specifications/x3dh/" target="_blank" rel="noopener noreferrer">
+                      Signal X3DH Specification
+                      <span class="sr-only">(opens in new tab)</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://tools.ietf.org/html/rfc5869" target="_blank" rel="noopener noreferrer">
+                      RFC 5869: HKDF
+                      <span class="sr-only">(opens in new tab)</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://tools.ietf.org/html/rfc7748" target="_blank" rel="noopener noreferrer">
+                      RFC 7748: X25519
+                      <span class="sr-only">(opens in new tab)</span>
+                    </a>
+                  </li>
+                </ul>
+              </section>
+
+              <section>
+                <h3>Credits</h3>
+                <p>
+                  The Double Ratchet Algorithm was developed by
+                  <strong>Trevor Perrin and Moxie Marlinspike</strong> (2016), building on prior
+                  work in the
+                  <a href="https://otr.im/" target="_blank" rel="noopener noreferrer">
+                    Off-the-Record Messaging
+                    <span class="sr-only">(opens in new tab)</span>
+                  </a>
+                  protocol.
+                </p>
+              </section>
+            </article>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- Screen reader announcements -->
+    <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
