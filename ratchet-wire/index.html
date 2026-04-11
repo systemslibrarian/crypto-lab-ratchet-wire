@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d1117" />
     <meta name="description" content="Interactive visualization of the Double Ratchet Algorithm used in Signal, WhatsApp, and Google Messages." />
+    <script>
+      (function () {
+        const saved = localStorage.getItem('theme');
+        document.documentElement.setAttribute('data-theme', saved ?? 'dark');
+      })();
+    </script>
     <title>Ratchet Wire - Double Ratchet Algorithm Demo</title>
   </head>
   <body>
@@ -13,6 +19,14 @@
 
     <div id="app">
       <header class="header" role="banner">
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          type="button"
+          aria-label="Switch to light mode"
+        >
+          🌙
+        </button>
         <h1><span aria-hidden="true">🔐 </span>Ratchet Wire</h1>
         <p class="subtitle">Double Ratchet Algorithm Visualizer</p>
       </header>
@@ -604,6 +618,10 @@ root_new = HKDF(root_old, DH(my_private, their_public), "root")
 
     <!-- Screen reader announcements -->
     <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+    <footer style="text-align:center; padding: 1.5rem; font-size: 0.85rem; opacity: 0.7; margin-top: 2rem;">
+      Whether you eat or drink or whatever you do, do it all for the glory of God. — 1 Corinthians 10:31
+    </footer>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

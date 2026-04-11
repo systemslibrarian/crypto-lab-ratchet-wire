@@ -22,6 +22,22 @@ interface ConversationMessage {
   timestamp: number;
 }
 
+type ThemeMode = 'dark' | 'light';
+
+const THEME_STORAGE_KEY = 'theme';
+
+function getThemeMode(): ThemeMode {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+function syncThemeToggle(button: HTMLButtonElement) {
+  const theme = getThemeMode();
+  const isDark = theme === 'dark';
+
+  button.textContent = isDark ? '🌙' : '☀️';
+  button.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+}
+
 class RatchetWireApp {
   // Ratchet states
   private aliceState!: RatchetState;
@@ -49,6 +65,7 @@ class RatchetWireApp {
   private messageInput!: HTMLInputElement;
   private tabButtons!: NodeListOf<HTMLButtonElement>;
   private tabContents!: NodeListOf<HTMLDivElement>;
+  private themeToggleButton!: HTMLButtonElement;
 
   async init() {
     console.log('Initializing Ratchet Wire...');
@@ -108,6 +125,19 @@ class RatchetWireApp {
     this.messageInput = document.getElementById('message-input') as HTMLInputElement;
     this.tabButtons = document.querySelectorAll('.tab-btn') as NodeListOf<HTMLButtonElement>;
     this.tabContents = document.querySelectorAll('.tab-content') as NodeListOf<HTMLDivElement>;
+    this.themeToggleButton = document.getElementById('theme-toggle') as HTMLButtonElement;
+
+    if (!document.documentElement.getAttribute('data-theme')) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+
+    syncThemeToggle(this.themeToggleButton);
+    this.themeToggleButton.addEventListener('click', () => {
+      const nextTheme: ThemeMode = getThemeMode() === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', nextTheme);
+      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      syncThemeToggle(this.themeToggleButton);
+    });
 
     // Form submission (send message)
     const form = document.getElementById('message-form') as HTMLFormElement;
