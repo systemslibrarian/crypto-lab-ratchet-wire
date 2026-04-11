@@ -46,6 +46,18 @@ html[data-theme='light'] {
   --color-on-bob: #ffffff;
 }
 
+html[data-theme='light'] .btn-primary:hover:not(:disabled) {
+  background-color: #0550ae;
+}
+
+html[data-theme='light'] .btn-danger:hover:not(:disabled) {
+  background-color: #a40e26;
+}
+
+html[data-theme='light'] .btn-success:hover:not(:disabled) {
+  background-color: #116329;
+}
+
 /* ---- Reset ---- */
 *,
 *::before,
