@@ -113,6 +113,52 @@ describe('Double Ratchet Integration', () => {
     expect(r.plaintext).toBe('genuine');
   });
 
+  it('refuses a header that would skip an excessive number of message keys (DoS guard)', async () => {
+    // The header is not authenticated until AEAD runs at the target key, so a
+    // forged, oversized messageNumber must be rejected up front rather than
+    // driving thousands of KDF iterations.
+    const { message } = await encrypt(alice, 'hi');
+    const forged: Message = {
+      ...message,
+      header: { ...message.header, messageNumber: 50_000 },
+    };
+    await expect(decrypt(bob, forged, bobSkipped)).rejects.toThrow(/skip/i);
+  });
+
+  it('rejects a malformed header (negative / fractional / NaN message number)', async () => {
+    const { message } = await encrypt(alice, 'hi');
+    for (const bad of [-1, 1.5, NaN]) {
+      const forged: Message = {
+        ...message,
+        header: { ...message.header, messageNumber: bad },
+      };
+      await expect(decrypt(bob, forged, bobSkipped)).rejects.toThrow(/header/i);
+    }
+  });
+
+  it('skipped-key fast path does not zero a buffer the caller still holds', async () => {
+    // Encrypt two messages; deliver the second first so Bob stores the first
+    // message's key as a skipped key.
+    const msgs: Message[] = [];
+    for (let i = 0; i < 2; i++) {
+      const { message, newState } = await encrypt(alice, `m${i}`);
+      msgs.push(message);
+      alice = newState;
+    }
+    let r = await decrypt(bob, msgs[1], bobSkipped);
+    bob = r.newState;
+    const retainedMap = r.skippedKeys; // caller keeps this reference
+    const skippedId = [...retainedMap.keys()][0];
+    const retainedBuf = retainedMap.get(skippedId)!;
+
+    // Consume the straggler via the skipped key (returns a fresh map).
+    r = await decrypt(bob, msgs[0], retainedMap);
+    expect(r.plaintext).toBe('m0');
+
+    // The retained map's buffer must NOT have been zeroed in place.
+    expect(new Uint8Array(retainedBuf).some((b) => b !== 0)).toBe(true);
+  });
+
   it('does not mutate the caller\'s state or skipped-key map', async () => {
     const { message } = await encrypt(alice, 'immutability');
     const bobBefore = bob;

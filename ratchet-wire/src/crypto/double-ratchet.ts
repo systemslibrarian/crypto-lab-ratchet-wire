@@ -97,6 +97,8 @@ export async function decrypt(
   message: Message,
   skippedKeys: SkippedKeys = new Map()
 ): Promise<{ plaintext: string; newState: RatchetState; skippedKeys: SkippedKeys }> {
+  validateHeader(message.header);
+
   const senderPubB64 = message.header.dhPublicKey;
   const updatedSkipped: SkippedKeys = new Map(skippedKeys);
   const aad = headerAad(message.header);
@@ -107,7 +109,9 @@ export async function decrypt(
   if (skipped) {
     const plaintext = await decryptAESGCM(message.ciphertext, message.iv, skipped, aad);
     updatedSkipped.delete(skippedId);
-    clearKey(skipped);
+    // NB: we do NOT clearKey(skipped) here — the buffer is shared with the
+    // caller's input map (Map copy is shallow), and decrypt() is contractually
+    // non-mutating. The consumed key is released with the old, discarded map.
     return { plaintext, newState: state, skippedKeys: updatedSkipped };
   }
 
@@ -135,6 +139,7 @@ export async function decrypt(
 
   // 3. Skip forward within the current receiving chain to the target message.
   let chain: ChainState = workingState.receivingChain;
+  assertSkipWithinBounds(chain.messageNumber, message.header.messageNumber);
   while (chain.messageNumber < message.header.messageNumber) {
     const { newState: advanced, messageKey } = await ratchetStep(chain);
     storeSkipped(updatedSkipped, senderPubB64, messageKey);
@@ -165,10 +170,46 @@ async function skipMessageKeys(
   skippedKeys: SkippedKeys
 ): Promise<void> {
   let current = chain;
+  assertSkipWithinBounds(current.messageNumber, targetMessageNumber);
   while (current.messageNumber < targetMessageNumber) {
     const { newState, messageKey } = await ratchetStep(current);
     storeSkipped(skippedKeys, senderPubB64, messageKey);
     current = newState;
+  }
+}
+
+/**
+ * Reject a malformed wire header before it reaches the ratchet logic.
+ *
+ * `messageNumber` and `previousChainLength` arrive as untrusted JSON numbers.
+ * A negative, fractional, `NaN`, or `Infinity` value would otherwise slip past
+ * the {@link assertSkipWithinBounds} arithmetic and be silently mishandled
+ * (e.g. `NaN` makes every `<` comparison false, skipping the loop and deriving
+ * the wrong key). Fail fast with a clear error instead.
+ */
+function validateHeader(header: Message['header']): void {
+  const isCount = (n: number): boolean => Number.isInteger(n) && n >= 0;
+  if (!isCount(header.messageNumber) || !isCount(header.previousChainLength)) {
+    throw new Error('Malformed message header: message numbers must be non-negative integers.');
+  }
+}
+
+/**
+ * Refuse to derive more than {@link MAX_SKIP} keys in a single skip operation.
+ *
+ * The message header (and therefore its `messageNumber`) is NOT yet
+ * authenticated when we skip — AEAD verification happens only once we reach the
+ * target key. Without this bound, a forged or corrupt header claiming a huge
+ * `messageNumber` would make us run the KDF that many times before the auth tag
+ * is ever checked, hanging the receiver (a denial-of-service). This mirrors the
+ * Signal spec's `MAX_SKIP` guard.
+ */
+function assertSkipWithinBounds(from: number, to: number): void {
+  if (to - from > MAX_SKIP) {
+    throw new Error(
+      `Refusing to skip ${to - from} message keys (max ${MAX_SKIP}) — ` +
+        'the header claims too large a message number (possible DoS or excessive loss).'
+    );
   }
 }
 
