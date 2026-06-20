@@ -23,6 +23,8 @@ import {
 interface ConversationMessage {
   sender: 'Alice' | 'Bob';
   text: string;
+  /** Fingerprint of the chain key (CK[Ns]) that produced this message's key. */
+  chainKeyFp: string;
   /** The on-the-wire header/IV, surfaced in the per-message inspector. */
   wire: {
     /** Sender's current ratchet public key (header.dhPublicKey), shortened. */
@@ -421,19 +423,21 @@ export class RatchetWireApp {
   private async deliver(from: 'Alice' | 'Bob', text: string) {
     const s = this.session;
     if (from === 'Alice') {
+      const chainKeyFp = hex(s.alice.sendingChain!.chainKey);
       const { message, newState } = await encrypt(s.alice, text);
       s.alice = newState;
       const r = await decrypt(s.bob, message, s.bobSkipped);
       s.bob = r.newState;
       s.bobSkipped = r.skippedKeys;
-      this.conversation.push({ sender: 'Alice', text: r.plaintext, wire: wireInfo(message) });
+      this.conversation.push({ sender: 'Alice', text: r.plaintext, chainKeyFp, wire: wireInfo(message) });
     } else {
+      const chainKeyFp = hex(s.bob.sendingChain!.chainKey);
       const { message, newState } = await encrypt(s.bob, text);
       s.bob = newState;
       const r = await decrypt(s.alice, message, s.aliceSkipped);
       s.alice = r.newState;
       s.aliceSkipped = r.skippedKeys;
-      this.conversation.push({ sender: 'Bob', text: r.plaintext, wire: wireInfo(message) });
+      this.conversation.push({ sender: 'Bob', text: r.plaintext, chainKeyFp, wire: wireInfo(message) });
     }
     this.renderConversation();
   }
@@ -510,7 +514,43 @@ export class RatchetWireApp {
     set('stat-bob-dh', String(bob.dhRatchetCount));
     set('stat-keys-memory', String(aliceSkipped.size + bobSkipped.size));
 
+    this.renderMkTimeline();
     this.renderRatchetViz();
+  }
+
+  /**
+   * Render the live message-key timeline: one row per message actually sent,
+   * showing the chain key that produced it and that the resulting message key
+   * was used once and deleted. This makes the symmetric ratchet and forward
+   * secrecy concrete with real values from the conversation.
+   */
+  private renderMkTimeline() {
+    const el = document.getElementById('mk-timeline');
+    if (!el) return;
+    if (!this.conversation.length) return; // keep the explanatory placeholder
+
+    el.innerHTML = '';
+    for (const msg of this.conversation) {
+      const row = document.createElement('div');
+      row.className = `mk-row ${msg.sender.toLowerCase()}`;
+
+      const who = document.createElement('span');
+      who.className = 'mk-who';
+      who.textContent = msg.sender;
+
+      const derivation = document.createElement('code');
+      derivation.className = 'mk-derivation';
+      derivation.textContent =
+        `CK[${msg.wire.messageNumber}] ${msg.chainKeyFp} → MK[${msg.wire.messageNumber}]`;
+
+      const fate = document.createElement('span');
+      fate.className = 'mk-fate';
+      fate.textContent = 'used once · deleted';
+
+      row.append(who, derivation, fate);
+      el.appendChild(row);
+    }
+    el.scrollTop = el.scrollHeight;
   }
 
   private renderRatchetViz() {

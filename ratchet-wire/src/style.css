@@ -541,6 +541,63 @@ a:hover {
   color: var(--color-text);
 }
 
+/* ---- Live message-key timeline ---- */
+.mk-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.mk-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.45rem 0.7rem;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.mk-row.alice {
+  border-left: 3px solid var(--color-alice);
+}
+
+.mk-row.bob {
+  border-left: 3px solid var(--color-bob);
+}
+
+.mk-who {
+  font-weight: 600;
+  font-size: 0.8rem;
+  min-width: 3.5rem;
+}
+
+.mk-row.alice .mk-who {
+  color: var(--color-alice);
+}
+
+.mk-row.bob .mk-who {
+  color: var(--color-bob);
+}
+
+.mk-derivation {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}
+
+.mk-fate {
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
 /* ---- Out-of-order delivery demo ---- */
 .ooo-panel {
   background-color: var(--color-bg-light);

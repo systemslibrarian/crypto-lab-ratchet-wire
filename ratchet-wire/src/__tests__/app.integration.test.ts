@@ -90,6 +90,12 @@ describe('App integration (DOM smoke test)', () => {
     expect(wire).not.toBeNull();
     expect(wire!.textContent).toContain('header.messageNumber');
     expect(wire!.textContent).toContain('header.dhPublicKey');
+
+    // The live message-key timeline records the derivation.
+    const row = document.querySelector('#mk-timeline .mk-row');
+    expect(row).not.toBeNull();
+    expect(row!.querySelector('.mk-derivation')!.textContent).toContain('MK[0]');
+    expect(row!.querySelector('.mk-fate')!.textContent).toMatch(/deleted/);
   });
 
   it('out-of-order demo: delivering m2 first stores skipped keys for m0 and m1', async () => {
