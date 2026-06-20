@@ -17,6 +17,9 @@ async function analyze(page: import('@playwright/test').Page) {
 
 for (const theme of ['dark', 'light'] as const) {
   test(`no serious/critical a11y violations across tabs (${theme})`, async ({ page }) => {
+    // Running axe across seven tabs is heavy (especially on Firefox/WebKit), so
+    // give these checks plenty of headroom over the default per-test timeout.
+    test.setTimeout(120_000);
     await page.goto('/');
     // Kill animations outright so axe never samples an element mid-fade (which
     // would read theme colours at partial opacity and report false contrast

@@ -953,6 +953,52 @@ a:hover {
   overflow-x: auto;
 }
 
+/* ---- Reactive coach (narrates each message) ---- */
+.coach {
+  margin: 0.75rem 0;
+  padding: 0.75rem 0.9rem;
+  background-color: var(--color-bg-light);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-alice);
+  border-radius: 8px;
+}
+
+.coach[hidden] {
+  display: none;
+}
+
+.coach-what {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-text);
+}
+
+.coach-next {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.coach-action {
+  display: inline-block;
+  margin-top: 0.15rem;
+  padding: 0.3rem 0.7rem;
+  background-color: var(--color-alice);
+  color: var(--color-on-alice);
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.coach-action:hover {
+  filter: brightness(1.08);
+}
+
 /* ---- First-run call-to-action ---- */
 .intro-cta {
   display: flex;

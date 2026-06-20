@@ -121,6 +121,25 @@ describe('App integration (DOM smoke test)', () => {
     expect(document.querySelector('#messages .message-bubble')!.textContent).toContain('Hi Bob');
   });
 
+  it('the coach narrates the message and offers a next-step action', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    (document.getElementById('sample-btn') as HTMLButtonElement).click();
+    await waitFor(() => document.getElementById('coach')!.hidden === false);
+
+    // First message → Bob's first DH ratchet is narrated.
+    expect(document.getElementById('coach-what')!.textContent).toMatch(/DH ratchet/i);
+
+    // The suggested action switches the sender to Bob.
+    const action = document.querySelector('#coach-next .coach-action') as HTMLButtonElement;
+    expect(action.textContent).toMatch(/Reply as Bob/i);
+    action.click();
+    expect(
+      (document.querySelector('input[name="sender"][value="bob"]') as HTMLInputElement).checked
+    ).toBe(true);
+  });
+
   it('encrypts, delivers, and renders a sent message', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();

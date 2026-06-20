@@ -200,6 +200,18 @@ export class RatchetWireApp {
   private session!: Session;
   private conversation: ConversationMessage[] = [];
 
+  // Reactive "coach" that narrates each message and suggests the next step.
+  private coachEvent: {
+    sender: 'Alice' | 'Bob';
+    receiver: 'Alice' | 'Bob';
+    ratcheted: boolean;
+    messageNumber: number;
+    receiverDhCount: number;
+  } | null = null;
+  private seenRatchet = false;
+  private seenSymmetric = false;
+  private coachExploredSecurity = false;
+
   // Dedicated session for the break-in recovery simulation (kept separate so it
   // is deterministic regardless of what the user did in the main conversation).
   private recovery: Session | null = null;
@@ -501,23 +513,113 @@ export class RatchetWireApp {
     if (from === 'Alice') {
       const chainKeyFp = hex(s.alice.sendingChain!.chainKey);
       const chainGen = s.alice.dhRatchetCount;
+      const receiverDhBefore = s.bob.dhRatchetCount;
       const { message, newState } = await encrypt(s.alice, text);
       s.alice = newState;
       const r = await decrypt(s.bob, message, s.bobSkipped);
       s.bob = r.newState;
       s.bobSkipped = r.skippedKeys;
       this.conversation.push({ sender: 'Alice', text: r.plaintext, chainKeyFp, chainGen, wire: wireInfo(message) });
+      this.coachEvent = {
+        sender: 'Alice',
+        receiver: 'Bob',
+        ratcheted: s.bob.dhRatchetCount > receiverDhBefore,
+        messageNumber: message.header.messageNumber,
+        receiverDhCount: s.bob.dhRatchetCount,
+      };
     } else {
       const chainKeyFp = hex(s.bob.sendingChain!.chainKey);
       const chainGen = s.bob.dhRatchetCount;
+      const receiverDhBefore = s.alice.dhRatchetCount;
       const { message, newState } = await encrypt(s.bob, text);
       s.bob = newState;
       const r = await decrypt(s.alice, message, s.aliceSkipped);
       s.alice = r.newState;
       s.aliceSkipped = r.skippedKeys;
       this.conversation.push({ sender: 'Bob', text: r.plaintext, chainKeyFp, chainGen, wire: wireInfo(message) });
+      this.coachEvent = {
+        sender: 'Bob',
+        receiver: 'Alice',
+        ratcheted: s.alice.dhRatchetCount > receiverDhBefore,
+        messageNumber: message.header.messageNumber,
+        receiverDhCount: s.alice.dhRatchetCount,
+      };
     }
     this.renderConversation();
+    this.renderCoach();
+  }
+
+  /**
+   * Narrate the cryptographic event that just happened and suggest a concrete
+   * next step. This is what turns the chat from "type and nothing explains
+   * itself" into a guided lesson.
+   */
+  private renderCoach() {
+    const ev = this.coachEvent;
+    const coach = document.getElementById('coach');
+    const whatEl = document.getElementById('coach-what');
+    const nextEl = document.getElementById('coach-next');
+    if (!ev || !coach || !whatEl || !nextEl) return;
+    coach.hidden = false;
+
+    // 1. What just happened.
+    if (ev.ratcheted) {
+      this.seenRatchet = true;
+      whatEl.textContent =
+        this.conversation.length === 1
+          ? `🔑 ${ev.receiver} received the very first message and performed his first DH ratchet — deriving the shared chains from Alice's ratchet key. ${ev.receiver} now has a sending chain and can reply.`
+          : `🔑 The direction changed, so ${ev.receiver} performed a DH ratchet: a brand-new root key and receiving chain were derived from fresh key material. That's break-in recovery — ${ev.receiver}'s DH-ratchet count is now ${ev.receiverDhCount}. Watch the Root Key change in the Key State panel.`;
+    } else {
+      this.seenSymmetric = true;
+      whatEl.textContent =
+        `↪ Same sender, so no DH ratchet — only the symmetric ratchet advanced. A one-time message key MK[${ev.messageNumber}] was derived and immediately deleted, and the chain key stepped forward. The root key is unchanged.`;
+    }
+
+    // 2. What to try next (adaptive), with a one-click action.
+    nextEl.innerHTML = '';
+    const tip = document.createElement('span');
+    let action: HTMLButtonElement | null = null;
+
+    if (this.conversation.length === 1) {
+      tip.textContent = 'Next: reply as Bob to ratchet the conversation the other way. ';
+      action = this.coachAction('Reply as Bob →', () => this.setSender('bob'));
+    } else if (!this.seenSymmetric) {
+      tip.textContent = `Next: send another as ${ev.sender} (same direction) to see the symmetric ratchet — a new message key, but no DH ratchet. `;
+      action = this.coachAction(
+        `Send again as ${ev.sender} →`,
+        () => this.setSender(ev.sender.toLowerCase() as 'alice' | 'bob')
+      );
+    } else if (this.seenRatchet && !this.coachExploredSecurity) {
+      tip.textContent = "You've now seen both ratchets. See what an attacker can and can't recover → ";
+      action = this.coachAction('Open Forward Secrecy', () => {
+        this.coachExploredSecurity = true;
+        this.switchTab('fs');
+      });
+    } else {
+      tip.textContent =
+        'Keep chatting to build the chains, or explore the Out of Order and Break-In Recovery tabs.';
+    }
+    nextEl.appendChild(tip);
+    if (action) nextEl.appendChild(action);
+  }
+
+  /** A small inline action button used by the coach. */
+  private coachAction(label: string, run: () => void): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'coach-action';
+    btn.textContent = label;
+    btn.addEventListener('click', run);
+    return btn;
+  }
+
+  /** Select a sender in the composer and focus the input. */
+  private setSender(who: 'alice' | 'bob') {
+    const radio = document.querySelector(
+      `input[name="sender"][value="${who}"]`
+    ) as HTMLInputElement | null;
+    if (radio) radio.checked = true;
+    this.messageInput.focus();
   }
 
   private renderConversation() {

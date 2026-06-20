@@ -24,6 +24,23 @@ test('the sample button sends and renders a message with its wire inspector', as
   );
 });
 
+test('the coach narrates the event and guides the next step', async ({ page }) => {
+  await page.getByRole('button', { name: /Send a sample message/i }).click();
+  await expect(page.locator('#coach')).toBeVisible();
+  await expect(page.locator('#coach-what')).toContainText(/DH ratchet/i);
+
+  // Follow the suggested action; it switches the composer to Bob.
+  await page.locator('#coach-next .coach-action').click();
+  await expect(page.locator('input[name="sender"][value="bob"]')).toBeChecked();
+
+  // A same-direction follow-up is narrated as a symmetric-only step.
+  await page.fill('#message-input', 'reply one');
+  await page.click('#send-btn');
+  await page.fill('#message-input', 'reply two');
+  await page.click('#send-btn');
+  await expect(page.locator('#coach-what')).toContainText(/symmetric ratchet/i);
+});
+
 test('free-form send works too', async ({ page }) => {
   await page.fill('#message-input', 'hello from a real browser');
   await page.click('#send-btn');
