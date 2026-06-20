@@ -14,8 +14,10 @@ import {
   acceptSessionX3DH,
   createAliceRatchetState,
   createBobRatchetState,
+  describeAliceX3DH,
   BobPreSessionKeys,
   BobPrekeyBundle,
+  X3DHBreakdown,
 } from './crypto/session-init';
 
 interface ConversationMessage {
@@ -52,6 +54,8 @@ interface HandshakeInfo {
   bobIdentityFingerprint: string;
   /** Short fingerprint of Alice's identity key. */
   aliceIdentityFingerprint: string;
+  /** The four-DH X3DH derivation, for the handshake breakdown tab. */
+  breakdown: X3DHBreakdown;
 }
 
 /** A fully-initialized Double Ratchet session (initiator + responder). */
@@ -108,6 +112,10 @@ async function buildSession(): Promise<Session> {
     verified: true,
     bobIdentityFingerprint: await fingerprint(bobBundle.identitySigningKey),
     aliceIdentityFingerprint: await fingerprint(aliceIK.publicKey),
+    breakdown: await describeAliceX3DH(
+      { identityKeyPair: aliceIK, ephemeralKeyPair: aliceEK },
+      bobBundle
+    ),
   };
 
   return {
@@ -220,7 +228,53 @@ export class RatchetWireApp {
     });
 
     this.renderHandshake();
+    this.renderX3DH();
     this.renderRatchetViz();
+  }
+
+  /** Populate the X3DH handshake-breakdown tab from this session's derivation. */
+  private renderX3DH() {
+    const container = document.getElementById('x3dh-breakdown');
+    if (!container) return;
+    const bd = this.session.handshake.breakdown;
+    container.innerHTML = '';
+
+    const step = (cls: string, text: string) => {
+      const el = document.createElement('div');
+      el.className = `x3dh-step ${cls}`;
+      el.textContent = text;
+      return el;
+    };
+
+    container.appendChild(
+      step(
+        bd.signatureVerified ? 'x3dh-ok' : 'x3dh-bad',
+        bd.signatureVerified
+          ? "① Verify Bob's signed pre-key signature (Ed25519) — ✓ authenticated"
+          : "① Verify Bob's signed pre-key signature — ✗ FAILED (would abort)"
+      )
+    );
+
+    const grid = document.createElement('div');
+    grid.className = 'x3dh-terms';
+    for (const t of bd.terms) {
+      const card = document.createElement('div');
+      card.className = 'x3dh-term';
+
+      const formula = document.createElement('code');
+      formula.className = 'x3dh-formula';
+      formula.textContent = `${t.name} = ${t.formula}`;
+
+      const value = document.createElement('span');
+      value.className = 'x3dh-value';
+      value.textContent = t.value;
+
+      card.append(formula, value);
+      grid.appendChild(card);
+    }
+    container.appendChild(grid);
+
+    container.appendChild(step('x3dh-sk', `② SK = HKDF(DH1 ‖ DH2 ‖ DH3 ‖ DH4) = ${bd.rootKey}`));
   }
 
   /** Show the authenticated-handshake banner (fingerprint + verified state). */

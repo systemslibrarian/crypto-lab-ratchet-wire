@@ -54,6 +54,22 @@ describe('App integration (DOM smoke test)', () => {
     expect(detail.textContent).toMatch(/[0-9A-F]{2}( [0-9A-F]{2}){7}/);
   });
 
+  it('renders the X3DH handshake breakdown (4 DH terms + SK)', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    const breakdown = document.getElementById('x3dh-breakdown')!;
+    const formulas = Array.from(breakdown.querySelectorAll('.x3dh-formula')).map((n) => n.textContent);
+    expect(formulas).toEqual([
+      'DH1 = DH(IK_A, SPK_B)',
+      'DH2 = DH(EK_A, IK_B)',
+      'DH3 = DH(EK_A, SPK_B)',
+      'DH4 = DH(EK_A, OPK_B)',
+    ]);
+    expect(breakdown.querySelector('.x3dh-ok')).not.toBeNull(); // signature verified
+    expect(breakdown.querySelector('.x3dh-sk')!.textContent).toContain('SK = HKDF');
+  });
+
   it('encrypts, delivers, and renders a sent message', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();

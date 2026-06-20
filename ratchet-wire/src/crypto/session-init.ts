@@ -121,27 +121,90 @@ export async function initiateSessionX3DH(
   aliceKeys: AliceSessionInitKeys,
   bob: BobPrekeyBundle
 ): Promise<SessionInitResult> {
-  const signedPreKeyRaw = await exportPublicKeyRaw(bob.signedPreKey);
-  const signatureValid = await verify(
-    bob.identitySigningKey,
-    bob.signedPreKeySignature,
-    signedPreKeyRaw
-  );
-  if (!signatureValid) {
+  if (!(await verifyBundleSignature(bob))) {
     throw new Error(
       'X3DH aborted: the signed pre-key signature is invalid. ' +
         "Bob's identity could not be authenticated (possible man-in-the-middle)."
     );
   }
 
-  const dh1 = await deriveSharedSecret(aliceKeys.identityKeyPair.privateKey, bob.signedPreKey);
-  const dh2 = await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.identityKey);
-  const dh3 = await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.signedPreKey);
-  const dh4 = await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.oneTimePreKey);
-
-  const rootKey = await deriveRootKey([dh1, dh2, dh3, dh4]);
-  [dh1, dh2, dh3, dh4].forEach(clearBuffer);
+  const terms = await aliceDHTerms(aliceKeys, bob);
+  const rootKey = await deriveRootKey(terms);
+  terms.forEach(clearBuffer);
   return { rootKey };
+}
+
+/** Verify Bob's signed pre-key against his identity key. */
+async function verifyBundleSignature(bob: BobPrekeyBundle): Promise<boolean> {
+  const signedPreKeyRaw = await exportPublicKeyRaw(bob.signedPreKey);
+  return verify(bob.identitySigningKey, bob.signedPreKeySignature, signedPreKeyRaw);
+}
+
+/** The four Diffie-Hellman terms of X3DH, from Alice's perspective, in order. */
+async function aliceDHTerms(
+  aliceKeys: AliceSessionInitKeys,
+  bob: BobPrekeyBundle
+): Promise<ArrayBuffer[]> {
+  return [
+    await deriveSharedSecret(aliceKeys.identityKeyPair.privateKey, bob.signedPreKey),
+    await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.identityKey),
+    await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.signedPreKey),
+    await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.oneTimePreKey),
+  ];
+}
+
+/** One Diffie-Hellman term in the X3DH breakdown, for visualization. */
+export interface X3DHTerm {
+  /** Short label (DH1…DH4). */
+  name: string;
+  /** Human formula, e.g. `DH(IK_A, SPK_B)`. */
+  formula: string;
+  /** First bytes of the shared secret, hex. */
+  value: string;
+}
+
+/** A teaching view of Alice's X3DH computation (signature + 4 DHs + SK). */
+export interface X3DHBreakdown {
+  signatureVerified: boolean;
+  terms: X3DHTerm[];
+  /** First bytes of the derived root key SK, hex. */
+  rootKey: string;
+}
+
+/**
+ * Recompute Alice's X3DH purely to expose its structure for the UI: whether the
+ * signed pre-key verified, each of the four DH shared secrets, and the resulting
+ * root key. Uses the same inputs as {@link initiateSessionX3DH}, so the values
+ * shown are exactly the ones the real handshake produced.
+ */
+export async function describeAliceX3DH(
+  aliceKeys: AliceSessionInitKeys,
+  bob: BobPrekeyBundle
+): Promise<X3DHBreakdown> {
+  const signatureVerified = await verifyBundleSignature(bob);
+  const terms = await aliceDHTerms(aliceKeys, bob);
+  const rootKey = await deriveRootKey(terms);
+
+  const formulas = ['DH(IK_A, SPK_B)', 'DH(EK_A, IK_B)', 'DH(EK_A, SPK_B)', 'DH(EK_A, OPK_B)'];
+  const breakdown: X3DHBreakdown = {
+    signatureVerified,
+    terms: terms.map((dh, i) => ({ name: `DH${i + 1}`, formula: formulas[i], value: shortHex(dh) })),
+    rootKey: shortHex(rootKey),
+  };
+
+  terms.forEach(clearBuffer);
+  clearBuffer(rootKey);
+  return breakdown;
+}
+
+/** First 8 bytes of a buffer as upper-case hex, with an ellipsis. */
+function shortHex(buffer: ArrayBuffer): string {
+  return (
+    Array.from(new Uint8Array(buffer).slice(0, 8))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase() + '…'
+  );
 }
 
 /**

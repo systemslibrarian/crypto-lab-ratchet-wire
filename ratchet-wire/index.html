@@ -46,6 +46,17 @@
             </button>
             <button
               class="tab-btn"
+              data-tab="x3dh"
+              role="tab"
+              id="tab-x3dh"
+              aria-selected="false"
+              aria-controls="x3dh"
+              tabindex="-1"
+            >
+              X3DH Handshake
+            </button>
+            <button
+              class="tab-btn"
               data-tab="state"
               role="tab"
               id="tab-state"
@@ -190,6 +201,39 @@
                   </div>
                 </div>
               </aside>
+            </div>
+          </div>
+
+          <!-- Tab: X3DH Handshake breakdown -->
+          <div
+            id="x3dh"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="tab-x3dh"
+            tabindex="0"
+            hidden
+          >
+            <div class="x3dh-panel">
+              <h3>X3DH — Authenticated Session Setup</h3>
+              <p class="panel-desc">
+                Before a single message is sent, Alice derives a shared root key
+                (<strong>SK</strong>) from Bob's published pre-key bundle. She first verifies the
+                signed pre-key, then combines four Diffie-Hellman secrets. Because every DH term
+                commutes, Bob derives the identical SK from his side — with no interactive round trip.
+                The values below are from this session's live handshake.
+              </p>
+
+              <div id="x3dh-breakdown" class="x3dh-breakdown" aria-live="polite"></div>
+
+              <section class="x3dh-legend" aria-label="What each Diffie-Hellman term provides">
+                <h4>Why four DH terms?</h4>
+                <ul>
+                  <li><strong>DH1</strong> mixes Alice's identity with Bob's signed pre-key — it ties the session to her long-term identity.</li>
+                  <li><strong>DH2</strong> mixes Alice's ephemeral with Bob's identity — it authenticates Bob.</li>
+                  <li><strong>DH3</strong> mixes the two ephemeral-side keys — fresh randomness for forward secrecy.</li>
+                  <li><strong>DH4</strong> mixes in Bob's <em>one-time</em> pre-key — so the session stays secret even if Bob's long-term keys later leak.</li>
+                </ul>
+              </section>
             </div>
           </div>
 

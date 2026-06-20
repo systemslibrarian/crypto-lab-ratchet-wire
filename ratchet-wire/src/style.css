@@ -541,6 +541,83 @@ a:hover {
   color: var(--color-text);
 }
 
+/* ---- X3DH handshake breakdown ---- */
+.x3dh-panel {
+  background-color: var(--color-bg-light);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.x3dh-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+.x3dh-step {
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  border: 1px solid var(--color-border);
+}
+
+.x3dh-step.x3dh-ok {
+  border-left: 3px solid var(--color-success);
+  color: var(--color-success);
+}
+
+.x3dh-step.x3dh-bad {
+  border-left: 3px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+.x3dh-step.x3dh-sk {
+  border-left: 3px solid var(--color-alice);
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.x3dh-terms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.x3dh-term {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.x3dh-formula {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-alice);
+}
+
+.x3dh-value {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}
+
+.x3dh-legend {
+  margin-top: 1.5rem;
+}
+
+.x3dh-legend ul {
+  padding-left: 1.25rem;
+  line-height: 1.7;
+}
+
 /* ---- Per-message wire-format inspector ---- */
 .wire-detail {
   margin-top: 0.35rem;
