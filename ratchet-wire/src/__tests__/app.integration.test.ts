@@ -68,6 +68,12 @@ describe('App integration (DOM smoke test)', () => {
     expect(document.querySelector('#messages .message-bubble')!.textContent).toBe(
       'hello from the browser'
     );
+
+    // The per-message wire inspector teaches the header format.
+    const wire = document.querySelector('#messages .wire-detail .wire-fields');
+    expect(wire).not.toBeNull();
+    expect(wire!.textContent).toContain('header.messageNumber');
+    expect(wire!.textContent).toContain('header.dhPublicKey');
   });
 
   it('demonstrates the MITM defense: a tampered pre-key is blocked', async () => {

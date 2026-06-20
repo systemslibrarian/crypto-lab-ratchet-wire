@@ -541,6 +541,39 @@ a:hover {
   color: var(--color-text);
 }
 
+/* ---- Per-message wire-format inspector ---- */
+.wire-detail {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.wire-detail > summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  list-style-position: inside;
+  user-select: none;
+}
+
+.wire-detail > summary:hover {
+  color: var(--color-text);
+}
+
+.wire-fields {
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.65rem;
+  background-color: var(--color-bg-light);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+}
+
 /* ---- Authenticated-handshake banner ---- */
 .handshake-banner {
   display: flex;

@@ -21,6 +21,27 @@ import {
 interface ConversationMessage {
   sender: 'Alice' | 'Bob';
   text: string;
+  /** The on-the-wire header/IV, surfaced in the per-message inspector. */
+  wire: {
+    /** Sender's current ratchet public key (header.dhPublicKey), shortened. */
+    ratchetKey: string;
+    /** Message number within the current sending chain (header.messageNumber, Ns). */
+    messageNumber: number;
+    /** Length of the previous sending chain (header.previousChainLength, PN). */
+    previousChainLength: number;
+    /** AES-GCM IV, shortened. */
+    iv: string;
+  };
+}
+
+/** Extract the teaching-relevant wire fields from an encrypted message. */
+function wireInfo(message: Message): ConversationMessage['wire'] {
+  return {
+    ratchetKey: `${message.header.dhPublicKey.slice(0, 16)}…`,
+    messageNumber: message.header.messageNumber,
+    previousChainLength: message.header.previousChainLength,
+    iv: `${message.iv.slice(0, 16)}…`,
+  };
 }
 
 /** Authentication outcome of the X3DH handshake, for display. */
@@ -323,14 +344,14 @@ export class RatchetWireApp {
       const r = await decrypt(s.bob, message, s.bobSkipped);
       s.bob = r.newState;
       s.bobSkipped = r.skippedKeys;
-      this.conversation.push({ sender: 'Alice', text: r.plaintext });
+      this.conversation.push({ sender: 'Alice', text: r.plaintext, wire: wireInfo(message) });
     } else {
       const { message, newState } = await encrypt(s.bob, text);
       s.bob = newState;
       const r = await decrypt(s.alice, message, s.aliceSkipped);
       s.alice = r.newState;
       s.aliceSkipped = r.skippedKeys;
-      this.conversation.push({ sender: 'Bob', text: r.plaintext });
+      this.conversation.push({ sender: 'Bob', text: r.plaintext, wire: wireInfo(message) });
     }
     this.renderConversation();
   }
@@ -345,12 +366,43 @@ export class RatchetWireApp {
       bubble.textContent = msg.text;
       bubble.setAttribute('aria-label', `${msg.sender} says: ${msg.text}`);
       div.appendChild(bubble);
+
+      div.appendChild(this.wireInspector(msg));
       this.messagesContainer.appendChild(div);
     }
     this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
 
     const latest = this.conversation[this.conversation.length - 1];
     if (latest) this.announce(`${latest.sender} says: ${latest.text}`);
+  }
+
+  /**
+   * Build the collapsible per-message "wire format" inspector. This is the core
+   * teaching artifact: it shows that every message ships a header carrying the
+   * sender's current ratchet public key plus the message-number (Ns) and
+   * previous-chain-length (PN) counters the receiver uses to drive the ratchets.
+   * Watch the key stay constant while N climbs within a run, then change and N
+   * reset to 0 the moment the conversation switches direction.
+   */
+  private wireInspector(msg: ConversationMessage): HTMLDetailsElement {
+    const details = document.createElement('details');
+    details.className = 'wire-detail';
+
+    const summary = document.createElement('summary');
+    summary.textContent = 'wire format';
+    details.appendChild(summary);
+
+    const pre = document.createElement('pre');
+    pre.className = 'wire-fields';
+    pre.textContent =
+      `header.dhPublicKey          ${msg.wire.ratchetKey}\n` +
+      `header.messageNumber  (Ns)  ${msg.wire.messageNumber}\n` +
+      `header.previousChainLength (PN)  ${msg.wire.previousChainLength}\n` +
+      `iv                          ${msg.wire.iv}\n` +
+      `ciphertext                  AES-256-GCM (header bound as AAD)`;
+    details.appendChild(pre);
+
+    return details;
   }
 
   private updateStateDisplay() {
