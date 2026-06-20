@@ -4,6 +4,13 @@
 
 An interactive browser-based visualization of the **Double Ratchet Algorithm**, the cryptographic protocol that powers **Signal, WhatsApp, and Google Messages**.
 
+> ⚠️ **Educational demo — not for production.** This project teaches how the Double
+> Ratchet works. It is unaudited, keeps no persistent state, uses a simplified
+> identity model (separate Ed25519 + X25519 keys instead of XEdDSA), and does not
+> address the side-channels and operational concerns a real messenger must. For
+> genuine end-to-end encryption use a vetted library such as
+> [libsignal](https://github.com/signalapp/libsignal).
+
 ## What You'll Learn
 
 Ratchet Wire demonstrates:
@@ -194,7 +201,8 @@ This ensures keys derived for one purpose cannot be used for another.
 
 ## License
 
-MIT
+[MIT](../LICENSE) — free to learn from and reuse. Note the educational disclaimer
+above: this is not audited or production-ready crypto.
 
 ## Further Reading
 

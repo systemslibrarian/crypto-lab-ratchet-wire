@@ -86,6 +86,11 @@ describe('App integration (DOM smoke test)', () => {
     expect(badge.textContent).toContain('Identity verified');
     // Fingerprint is rendered as space-separated hex byte pairs.
     expect(detail.textContent).toMatch(/[0-9A-F]{2}( [0-9A-F]{2}){7}/);
+
+    // The "not for production" disclaimer must be present.
+    const disclaimer = document.querySelector('.edu-disclaimer');
+    expect(disclaimer).not.toBeNull();
+    expect(disclaimer!.textContent).toMatch(/not for production/i);
   });
 
   it('renders the X3DH handshake breakdown (4 DH terms + SK)', async () => {

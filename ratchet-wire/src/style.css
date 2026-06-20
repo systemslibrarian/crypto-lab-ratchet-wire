@@ -943,6 +943,23 @@ a:hover {
   overflow-x: auto;
 }
 
+/* ---- Educational disclaimer ---- */
+.edu-disclaimer {
+  margin: 0 0 1.5rem;
+  padding: 0.85rem 1.1rem;
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid var(--color-warning);
+  border-left: 4px solid var(--color-warning);
+  border-radius: 8px;
+}
+
+.edu-disclaimer p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
 /* ---- Learning-path signpost ---- */
 .learn-path {
   display: flex;

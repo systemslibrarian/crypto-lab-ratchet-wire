@@ -2,13 +2,17 @@
   "name": "ratchet-wire",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
+  "description": "Educational interactive visualization of the Double Ratchet algorithm (not for production use).",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "deploy": "npm run build && gh-pages -d dist",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0",
