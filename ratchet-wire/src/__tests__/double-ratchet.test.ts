@@ -1,237 +1,175 @@
 /**
- * Integration Tests for Full Double Ratchet
- * 
- * Simulates a real conversation between Alice and Bob with:
- * - Message encryption and decryption
- * - Bidirectional ratcheting
- * - Out-of-order message handling
+ * Integration tests for the full Double Ratchet.
+ *
+ * Exercises a real conversation between Alice and Bob, started from the
+ * simplified X3DH session setup, covering bidirectional ratcheting, out-of-order
+ * delivery, header authentication, and break-in recovery.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { encrypt, decrypt, Message } from '../crypto/double-ratchet';
-import { generateKeyPair } from '../crypto/x25519';
+import { encrypt, decrypt, Message, SkippedKeys } from '../crypto/double-ratchet';
 import { RatchetState } from '../crypto/dh-ratchet';
+import { establishSession, toHex } from './session-helper';
 
 describe('Double Ratchet Integration', () => {
-  let aliceState: RatchetState;
-  let bobState: RatchetState;
+  let alice: RatchetState;
+  let bob: RatchetState;
+  let aliceSkipped: SkippedKeys;
+  let bobSkipped: SkippedKeys;
 
   beforeEach(async () => {
-    // Initialize Alice and Bob with the same initial root key
-    // (In real setup, they would use X3DH; for this test, we use a shared secret)
-    const initialRootKey = new Uint8Array(32).fill(0x42).buffer;
-
-    const aliceDHPair = await generateKeyPair();
-    const bobDHPair = await generateKeyPair();
-
-    aliceState = {
-      rootKey: initialRootKey,
-      sendingChain: {
-        chainKey: new Uint8Array(32).fill(0xa1).buffer,
-        messageNumber: 0,
-      },
-      receivingChain: {
-        chainKey: new Uint8Array(32).fill(0xb1).buffer,
-        messageNumber: 0,
-      },
-      myDHKeyPair: aliceDHPair,
-      theirDHPublicKey: bobDHPair.publicKey,
-      dhRatchetCount: 0,
-    };
-
-    bobState = {
-      rootKey: initialRootKey,
-      sendingChain: {
-        chainKey: new Uint8Array(32).fill(0xb1).buffer,
-        messageNumber: 0,
-      },
-      receivingChain: {
-        chainKey: new Uint8Array(32).fill(0xa1).buffer,
-        messageNumber: 0,
-      },
-      myDHKeyPair: bobDHPair,
-      theirDHPublicKey: aliceDHPair.publicKey,
-      dhRatchetCount: 0,
-    };
+    ({ aliceState: alice, bobState: bob } = await establishSession());
+    aliceSkipped = new Map();
+    bobSkipped = new Map();
   });
 
-  it('should encrypt and decrypt a single message', async () => {
-    const plaintext = 'Hello, Bob!';
+  /** Alice -> Bob: encrypt, deliver, decrypt; updates both states + skip maps. */
+  async function aliceToBob(text: string): Promise<string> {
+    const { message, newState } = await encrypt(alice, text);
+    alice = newState;
+    const r = await decrypt(bob, message, bobSkipped);
+    bob = r.newState;
+    bobSkipped = r.skippedKeys;
+    return r.plaintext;
+  }
 
-    // Alice encrypts
-    const { message, newState: aliceNewState } = await encrypt(aliceState, plaintext);
-    aliceState = aliceNewState;
+  /** Bob -> Alice. */
+  async function bobToAlice(text: string): Promise<string> {
+    const { message, newState } = await encrypt(bob, text);
+    bob = newState;
+    const r = await decrypt(alice, message, aliceSkipped);
+    alice = r.newState;
+    aliceSkipped = r.skippedKeys;
+    return r.plaintext;
+  }
 
-    // Bob decrypts
-    const { plaintext: decrypted, newState: bobNewState } = await decrypt(bobState, message);
-    bobState = bobNewState;
-
-    expect(decrypted).toBe(plaintext);
+  it('encrypts and decrypts a single message; first receive triggers a DH ratchet', async () => {
+    expect(await aliceToBob('Hello, Bob!')).toBe('Hello, Bob!');
+    // Bob had no DHr; receiving Alice's first message performs his first ratchet.
+    expect(bob.dhRatchetCount).toBe(1);
+    expect(bob.receivingChain).not.toBeNull();
+    expect(bob.sendingChain).not.toBeNull(); // Bob can now reply.
   });
 
-  it('should handle bidirectional messages', async () => {
-    const messages: { from: string; to: string; text: string }[] = [
-      { from: 'Alice', to: 'Bob', text: 'Hi Bob!' },
-      { from: 'Bob', to: 'Alice', text: 'Hi Alice!' },
-      { from: 'Alice', to: 'Bob', text: 'How are you?' },
-      { from: 'Bob', to: 'Alice', text: 'Great! And you?' },
-    ];
+  it('ping-pong increments the DH ratchet on every direction change', async () => {
+    await aliceToBob('a'); // bob ratchets -> 1
+    await bobToAlice('b'); // alice ratchets -> 1
+    await aliceToBob('c'); // bob ratchets -> 2
+    await bobToAlice('d'); // alice ratchets -> 2
 
-    const aliceSkippedKeys = new Map<string, ArrayBuffer>();
-    const bobSkippedKeys = new Map<string, ArrayBuffer>();
-
-    for (const { from, text } of messages) {
-      if (from === 'Alice') {
-        const { message, newState } = await encrypt(aliceState, text);
-        aliceState = newState;
-
-        const { plaintext, newState: bobNewState, skippedKeys } = await decrypt(
-          bobState,
-          message,
-          bobSkippedKeys
-        );
-        bobState = bobNewState;
-
-        expect(plaintext).toBe(text);
-        Object.assign(bobSkippedKeys, skippedKeys);
-      } else {
-        const { message, newState } = await encrypt(bobState, text);
-        bobState = newState;
-
-        const { plaintext, newState: aliceNewState, skippedKeys } = await decrypt(
-          aliceState,
-          message,
-          aliceSkippedKeys
-        );
-        aliceState = aliceNewState;
-
-        expect(plaintext).toBe(text);
-        Object.assign(aliceSkippedKeys, skippedKeys);
-      }
-    }
+    expect(bob.dhRatchetCount).toBe(2);
+    expect(alice.dhRatchetCount).toBe(2);
   });
 
-  it('should handle out-of-order delivery', async () => {
-    const bobSkippedKeys = new Map<string, ArrayBuffer>();
+  it('handles a multi-message same-direction run (one DH ratchet, symmetric steps)', async () => {
+    await aliceToBob('1');
+    expect(await aliceToBob('2')).toBe('2');
+    expect(await aliceToBob('3')).toBe('3');
+    // Alice never changed her ratchet key, so Bob ratcheted only once.
+    expect(bob.dhRatchetCount).toBe(1);
+    expect(bob.receivingChain!.messageNumber).toBe(3);
+  });
 
-    // Alice sends 3 messages
+  it('handles out-of-order delivery via skipped message keys', async () => {
     const messages: Message[] = [];
     for (let i = 0; i < 3; i++) {
-      const { message, newState } = await encrypt(aliceState, `Message ${i}`);
+      const { message, newState } = await encrypt(alice, `Message ${i}`);
       messages.push(message);
-      aliceState = newState;
+      alice = newState;
     }
 
-    // Bob receives them out of order: 2, 0, 1
-    const order = [2, 0, 1];
-
-    for (const idx of order) {
-      const { plaintext, newState, skippedKeys } = await decrypt(
-        bobState,
-        messages[idx],
-        bobSkippedKeys
-      );
-      bobState = newState;
-
-      expect(plaintext).toBe(`Message ${idx}`);
-      Object.assign(bobSkippedKeys, skippedKeys);
+    for (const idx of [2, 0, 1]) {
+      const r = await decrypt(bob, messages[idx], bobSkipped);
+      bob = r.newState;
+      bobSkipped = r.skippedKeys;
+      expect(r.plaintext).toBe(`Message ${idx}`);
     }
   });
 
-  it('should update DH ratchet when sender key changes', async () => {
-    const bobSkippedKeys = new Map<string, ArrayBuffer>();
-
-    const initialAliceDHRatchetCount = aliceState.dhRatchetCount;
-    const initialBobDHRatchetCount = bobState.dhRatchetCount;
-
-    // Alice sends a message (advances her DH key via new key pair generation in next message)
-    let { message, newState } = await encrypt(aliceState, 'Message 1');
-    aliceState = newState;
-
-    // Bob receives it
-    let { newState: bobNewState } = await decrypt(bobState, message, bobSkippedKeys);
-    bobState = bobNewState;
-
-    // Alice sends another (this triggers Bob's DH ratchet when he sees the new key)
-    ({ message, newState } = await encrypt(aliceState, 'Message 2'));
-    aliceState = newState;
-
-    ({ newState: bobNewState } = await decrypt(bobState, message, bobSkippedKeys));
-    bobState = bobNewState;
-
-    // Both should have incremented DH ratchet counts at some point in the conversation
-    // (At minimum, the initial key agreement)
-    expect(aliceState.dhRatchetCount).toBeGreaterThanOrEqual(initialAliceDHRatchetCount);
-    expect(bobState.dhRatchetCount).toBeGreaterThanOrEqual(initialBobDHRatchetCount);
+  it('rejects a message whose header has been tampered with (AEAD binds the header)', async () => {
+    const { message } = await encrypt(alice, 'authentic');
+    const forged: Message = {
+      ...message,
+      header: { ...message.header, messageNumber: message.header.messageNumber + 7 },
+    };
+    await expect(decrypt(bob, forged, bobSkipped)).rejects.toBeDefined();
   });
 
-  it('should maintain message keys are not stored in state', async () => {
-    // Encrypt and decrypt a message
-    const { message, newState: aliceNewState } = await encrypt(aliceState, 'Secret');
-    aliceState = aliceNewState;
+  it('a failed (forged) message does not corrupt the receiver state', async () => {
+    // Encrypt a genuine first message (which would trigger Bob's first DH
+    // ratchet on receipt), then forge a copy whose header is tampered so AEAD
+    // fails *after* the ratchet has run. Decrypt must leave Bob untouched, so
+    // the genuine message still decrypts afterward.
+    const { message } = await encrypt(alice, 'genuine');
+    const forged: Message = {
+      ...message,
+      header: { ...message.header, messageNumber: message.header.messageNumber + 7 },
+    };
 
-    const { plaintext, newState: bobNewState } = await decrypt(bobState, message);
-    bobState = bobNewState;
+    await expect(decrypt(bob, forged, bobSkipped)).rejects.toBeDefined();
 
-    expect(plaintext).toBe('Secret');
-
-    // Verify ratchet states don't contain message keys
-    // (This is implicitly tested by the fact that we advance chains and clear keys)
-    expect(aliceState.sendingChain.chainKey).toBeDefined();
-    expect(aliceState.sendingChain.chainKey.byteLength).toBe(32);
-    expect(bobState.receivingChain.chainKey).toBeDefined();
-    expect(bobState.receivingChain.chainKey.byteLength).toBe(32);
+    // Bob's state must be intact: the genuine message decrypts cleanly.
+    const r = await decrypt(bob, message, bobSkipped);
+    expect(r.plaintext).toBe('genuine');
   });
 
-  it('should successfully complete a 10-message conversation', async () => {
-    const aliceSkippedKeys = new Map<string, ArrayBuffer>();
-    const bobSkippedKeys = new Map<string, ArrayBuffer>();
+  it('does not mutate the caller\'s state or skipped-key map', async () => {
+    const { message } = await encrypt(alice, 'immutability');
+    const bobBefore = bob;
+    const skippedBefore = bobSkipped;
 
-    const transcript: { sender: string; text: string }[] = [
-      { sender: 'Alice', text: 'Hey Bob, how are you?' },
-      { sender: 'Bob', text: 'Great! How about you?' },
-      { sender: 'Alice', text: 'Good, good. What have you been up to?' },
-      { sender: 'Bob', text: 'Working on some crypto stuff.' },
-      { sender: 'Alice', text: 'That sounds interesting!' },
-      { sender: 'Bob', text: 'It really is.' },
-      { sender: 'Alice', text: 'Tell me more.' },
-      { sender: 'Bob', text: 'Well, it\'s about the Double Ratchet...' },
-      { sender: 'Alice', text: 'Oh wow, I\'ve been learning about that too!' },
-      { sender: 'Bob', text: 'Awesome! We should collaborate.' },
+    const r = await decrypt(bob, message, bobSkipped);
+
+    expect(bob).toBe(bobBefore); // same reference, untouched
+    expect(bobSkipped).toBe(skippedBefore);
+    expect(r.newState).not.toBe(bobBefore);
+    expect(bob.receivingChain).toBeNull(); // original Bob still un-ratcheted
+  });
+
+  it('demonstrates genuine break-in recovery (root key changes to one the attacker cannot derive)', async () => {
+    // Warm up so the last move was Bob -> Alice, leaving Alice with a fresh
+    // ratchet key that Bob has not yet seen.
+    await aliceToBob('hi');
+    await bobToAlice('hey');
+
+    // Attacker compromises Bob: snapshot his current root key + ratchet count.
+    const compromisedRootKey = toHex(bob.rootKey);
+    const compromisedCount = bob.dhRatchetCount;
+
+    // The conversation simply continues: Alice sends, carrying her fresh key.
+    // Bob's receipt performs a DH ratchet with key material generated after the
+    // compromise, which the attacker (holding only the snapshot) cannot derive.
+    expect(await aliceToBob('post-compromise message')).toBe('post-compromise message');
+
+    expect(bob.dhRatchetCount).toBe(compromisedCount + 1);
+    expect(toHex(bob.rootKey)).not.toBe(compromisedRootKey);
+  });
+
+  it('completes a 10-message bidirectional conversation', async () => {
+    const transcript: { from: 'A' | 'B'; text: string }[] = [
+      { from: 'A', text: 'Hey Bob, how are you?' },
+      { from: 'B', text: 'Great! How about you?' },
+      { from: 'A', text: 'Good. What have you been up to?' },
+      { from: 'B', text: 'Working on some crypto stuff.' },
+      { from: 'A', text: 'That sounds interesting!' },
+      { from: 'B', text: 'It really is.' },
+      { from: 'A', text: 'Tell me more.' },
+      { from: 'B', text: "It's about the Double Ratchet..." },
+      { from: 'A', text: "I've been learning about that too!" },
+      { from: 'B', text: 'Awesome! We should collaborate.' },
     ];
 
-    for (const { sender, text } of transcript) {
-      if (sender === 'Alice') {
-        const { message, newState } = await encrypt(aliceState, text);
-        aliceState = newState;
-
-        const { plaintext, newState: bobNewState, skippedKeys } = await decrypt(
-          bobState,
-          message,
-          bobSkippedKeys
-        );
-        bobState = bobNewState;
-
-        expect(plaintext).toBe(text);
-        Object.assign(bobSkippedKeys, skippedKeys);
-      } else {
-        const { message, newState } = await encrypt(bobState, text);
-        bobState = newState;
-
-        const { plaintext, newState: aliceNewState, skippedKeys } = await decrypt(
-          aliceState,
-          message,
-          aliceSkippedKeys
-        );
-        aliceState = aliceNewState;
-
-        expect(plaintext).toBe(text);
-        Object.assign(aliceSkippedKeys, skippedKeys);
-      }
+    for (const { from, text } of transcript) {
+      const got = from === 'A' ? await aliceToBob(text) : await bobToAlice(text);
+      expect(got).toBe(text);
     }
 
-    // Verify states have progressed
-    expect(aliceState.sendingChain.messageNumber).toBeGreaterThan(0);
-    expect(bobState.sendingChain.messageNumber).toBeGreaterThan(0);
+    // Each direction change drives a DH ratchet; after a 10-message ping-pong
+    // both sides have ratcheted several times. (messageNumber resets to 0 on
+    // each ratchet, so it is not a meaningful end-state assertion here.)
+    expect(alice.dhRatchetCount).toBeGreaterThan(0);
+    expect(bob.dhRatchetCount).toBeGreaterThan(0);
+    expect(alice.sendingChain).not.toBeNull();
+    expect(bob.sendingChain).not.toBeNull();
   });
 });

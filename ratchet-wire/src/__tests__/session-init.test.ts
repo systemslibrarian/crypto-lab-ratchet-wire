@@ -6,154 +6,89 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   initiateSessionX3DH,
   acceptSessionX3DH,
-  AliceSessionInitKeys,
-  BobPreSessionKeys,
   createAliceRatchetState,
   createBobRatchetState,
+  AliceSessionInitKeys,
+  BobPreSessionKeys,
 } from '../crypto/session-init';
-import { generateKeyPair } from '../crypto/x25519';
+import { generateKeyPair, KeyPair } from '../crypto/x25519';
+import { toHex } from './session-helper';
 
 describe('Simplified X3DH Session Initialization', () => {
-  let aliceSessionInitKeys: AliceSessionInitKeys;
-  let bobPreSessionKeys: BobPreSessionKeys;
-  let aliceDHKeyPair: { publicKey: CryptoKey; privateKey: CryptoKey };
-  let bobDHKeyPair: { publicKey: CryptoKey; privateKey: CryptoKey };
+  let aliceKeys: AliceSessionInitKeys;
+  let bobKeys: BobPreSessionKeys;
+  let aliceRatchet: KeyPair;
+  let bobRatchet: KeyPair;
 
   beforeEach(async () => {
-    // Alice generates her keys
-    aliceSessionInitKeys = {
+    aliceKeys = {
       identityKeyPair: await generateKeyPair(),
       ephemeralKeyPair: await generateKeyPair(),
     };
-
-    // Bob generates and publishes his keys
-    bobPreSessionKeys = {
+    bobKeys = {
       identityKeyPair: await generateKeyPair(),
       signedPreKeyPair: await generateKeyPair(),
     };
-
-    // Both generate their DH key pairs for the ratchet
-    aliceDHKeyPair = await generateKeyPair();
-    bobDHKeyPair = await generateKeyPair();
+    aliceRatchet = await generateKeyPair();
+    bobRatchet = await generateKeyPair();
   });
 
-  it('should generate a session root key', async () => {
-    const sessionResult = await initiateSessionX3DH(
-      aliceSessionInitKeys,
-      bobPreSessionKeys.identityKeyPair.publicKey,
-      bobPreSessionKeys.signedPreKeyPair.publicKey,
-      aliceDHKeyPair,
-      bobDHKeyPair
-    );
+  const aliceInitiate = () =>
+    initiateSessionX3DH(aliceKeys, bobKeys.identityKeyPair.publicKey, bobKeys.signedPreKeyPair.publicKey);
+  const bobAccept = () =>
+    acceptSessionX3DH(bobKeys, aliceKeys.identityKeyPair.publicKey, aliceKeys.ephemeralKeyPair.publicKey);
 
-    expect(sessionResult.rootKey).toBeInstanceOf(ArrayBuffer);
-    expect(sessionResult.rootKey.byteLength).toBe(32);
+  it('should generate a 32-byte session root key', async () => {
+    const session = await aliceInitiate();
+    expect(session.rootKey).toBeInstanceOf(ArrayBuffer);
+    expect(session.rootKey.byteLength).toBe(32);
   });
 
-  it('should derive matching root key from Alice and Bob perspectives', async () => {
-    // Alice initiates the session
-    const aliceSessionResult = await initiateSessionX3DH(
-      aliceSessionInitKeys,
-      bobPreSessionKeys.identityKeyPair.publicKey,
-      bobPreSessionKeys.signedPreKeyPair.publicKey,
-      aliceDHKeyPair,
-      bobDHKeyPair
-    );
-
-    // Bob accepts the session
-    const bobSessionResult = await acceptSessionX3DH(
-      bobPreSessionKeys,
-      aliceSessionInitKeys.identityKeyPair.publicKey,
-      aliceSessionInitKeys.ephemeralKeyPair.publicKey,
-      aliceDHKeyPair,
-      bobDHKeyPair
-    );
-
-    // Both should derive the same root key
-    const aliceRootKeyArray = new Uint8Array(aliceSessionResult.rootKey);
-    const bobRootKeyArray = new Uint8Array(bobSessionResult.rootKey);
-
-    expect(aliceRootKeyArray).toEqual(bobRootKeyArray);
-  });
-
-  it('should create compatible Alice and Bob ratchet states', async () => {
-    // Perform X3DH
-    const sessionResult = await initiateSessionX3DH(
-      aliceSessionInitKeys,
-      bobPreSessionKeys.identityKeyPair.publicKey,
-      bobPreSessionKeys.signedPreKeyPair.publicKey,
-      aliceDHKeyPair,
-      bobDHKeyPair
-    );
-
-    // Create ratchet states
-    const aliceState = createAliceRatchetState(sessionResult);
-    const bobState = createBobRatchetState(sessionResult);
-
-    // Both should have the same root key
-    expect(aliceState.rootKey).toEqual(bobState.rootKey);
-
-    // Alice's sending chain key should match Bob's receiving chain key
-    expect(new Uint8Array(aliceState.sendingChain.chainKey)).toEqual(
-      new Uint8Array(bobState.receivingChain.chainKey)
-    );
-    // Bob's sending chain key should match Alice's receiving chain key
-    expect(new Uint8Array(bobState.sendingChain.chainKey)).toEqual(
-      new Uint8Array(aliceState.receivingChain.chainKey)
-    );
+  it('should derive the SAME root key from Alice and Bob perspectives', async () => {
+    const aliceSession = await aliceInitiate();
+    const bobSession = await bobAccept();
+    // X3DH must converge: each DH term commutes, so SK is identical.
+    expect(toHex(aliceSession.rootKey)).toBe(toHex(bobSession.rootKey));
   });
 
   it('should produce different root keys for different ephemeral keys', async () => {
-    // First session
-    const session1 = await initiateSessionX3DH(
-      aliceSessionInitKeys,
-      bobPreSessionKeys.identityKeyPair.publicKey,
-      bobPreSessionKeys.signedPreKeyPair.publicKey,
-      aliceDHKeyPair,
-      bobDHKeyPair
-    );
+    const session1 = await aliceInitiate();
 
-    // Generate different ephemeral key
-    const differentEphemeralKey = await generateKeyPair();
-    const differentAliceSessionKeys: AliceSessionInitKeys = {
-      identityKeyPair: aliceSessionInitKeys.identityKeyPair,
-      ephemeralKeyPair: differentEphemeralKey,
-    };
+    aliceKeys = { ...aliceKeys, ephemeralKeyPair: await generateKeyPair() };
+    const session2 = await aliceInitiate();
 
-    // Second session with different ephemeral key
-    const session2 = await initiateSessionX3DH(
-      differentAliceSessionKeys,
-      bobPreSessionKeys.identityKeyPair.publicKey,
-      bobPreSessionKeys.signedPreKeyPair.publicKey,
-      aliceDHKeyPair,
-      bobDHKeyPair
-    );
-
-    const rootKey1 = new Uint8Array(session1.rootKey);
-    const rootKey2 = new Uint8Array(session2.rootKey);
-
-    // Different ephemeral keys should produce different root keys
-    expect(rootKey1).not.toEqual(rootKey2);
+    expect(toHex(session1.rootKey)).not.toBe(toHex(session2.rootKey));
   });
 
-  it('should provide initial chain keys for both parties', async () => {
-    const sessionResult = await initiateSessionX3DH(
-      aliceSessionInitKeys,
-      bobPreSessionKeys.identityKeyPair.publicKey,
-      bobPreSessionKeys.signedPreKeyPair.publicKey,
-      aliceDHKeyPair,
-      bobDHKeyPair
-    );
+  it('should initialize Alice as initiator (sending chain ready, no receiving chain)', async () => {
+    const session = await aliceInitiate();
+    const alice = await createAliceRatchetState(session, aliceRatchet, bobRatchet.publicKey);
 
-    // Both initial chain keys should be valid 32-byte values
-    expect(sessionResult.initialChainKeyAlice).toBeInstanceOf(ArrayBuffer);
-    expect(sessionResult.initialChainKeyAlice.byteLength).toBe(32);
-    expect(sessionResult.initialChainKeyBob).toBeInstanceOf(ArrayBuffer);
-    expect(sessionResult.initialChainKeyBob.byteLength).toBe(32);
+    expect(alice.sendingChain).not.toBeNull();
+    expect(alice.sendingChain!.chainKey.byteLength).toBe(32);
+    expect(alice.receivingChain).toBeNull();
+    expect(alice.theirDHPublicKey).toBe(bobRatchet.publicKey);
+    expect(alice.dhRatchetCount).toBe(0);
+  });
 
-    // They should be different
-    const aliceChainKey = new Uint8Array(sessionResult.initialChainKeyAlice);
-    const bobChainKey = new Uint8Array(sessionResult.initialChainKeyBob);
-    expect(aliceChainKey).not.toEqual(bobChainKey);
+  it('should initialize Bob as responder (no chains, RK = SK, no DHr)', async () => {
+    const session = await bobAccept();
+    const bob = createBobRatchetState(session, bobRatchet);
+
+    expect(bob.sendingChain).toBeNull();
+    expect(bob.receivingChain).toBeNull();
+    expect(bob.theirDHPublicKey).toBeNull();
+    expect(toHex(bob.rootKey)).toBe(toHex(session.rootKey));
+    expect(bob.myDHKeyPair).toBe(bobRatchet);
+  });
+
+  it("Alice's initial sending chain differs from Bob's bare root key", async () => {
+    // Alice does a sending-half DH ratchet at init; Bob has not ratcheted yet.
+    const aliceSession = await aliceInitiate();
+    const bobSession = await bobAccept();
+    const alice = await createAliceRatchetState(aliceSession, aliceRatchet, bobRatchet.publicKey);
+    const bob = createBobRatchetState(bobSession, bobRatchet);
+
+    expect(toHex(alice.sendingChain!.chainKey)).not.toBe(toHex(bob.rootKey));
   });
 });

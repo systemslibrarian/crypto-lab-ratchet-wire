@@ -1,34 +1,41 @@
 /**
- * X25519 Elliptic Curve Diffie-Hellman (ECDH)
- * 
+ * X25519 Elliptic Curve Diffie-Hellman
+ *
  * Reference: RFC 7748 - Elliptic Curves for Security
  * https://tools.ietf.org/html/rfc7748
  * https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey
+ *
+ * Uses the standard Web Crypto `X25519` algorithm (a dedicated key-agreement
+ * algorithm in the W3C spec), supported by modern browsers and Node's
+ * `crypto.webcrypto`. Note: this is NOT the same as `ECDH` with
+ * `namedCurve: 'X25519'`, a non-standard form some older Chromium builds
+ * accepted but which is unrecognized elsewhere.
  */
+
+/** The Web Crypto algorithm identifier for X25519 key agreement. */
+const X25519_ALG = { name: 'X25519' } as const;
+
+export interface KeyPair {
+  publicKey: CryptoKey;
+  privateKey: CryptoKey;
+}
 
 /**
  * Generate an X25519 key pair.
- * 
- * @returns Promise resolving to an object with publicKey and privateKey (both CryptoKey)
- * @throws Error if Web Crypto API does not support X25519
+ *
+ * @returns The public and private CryptoKeys
+ * @throws Error if Web Crypto / X25519 is unavailable
  */
-export async function generateKeyPair(): Promise<{
-  publicKey: CryptoKey;
-  privateKey: CryptoKey;
-}> {
-  // Check browser support
+export async function generateKeyPair(): Promise<KeyPair> {
   if (!globalThis.crypto?.subtle?.generateKey) {
     throw new Error('Web Crypto API not available in this environment');
   }
 
-  const keyPair = await crypto.subtle.generateKey(
-    {
-      name: 'ECDH',
-      namedCurve: 'X25519',
-    },
-    true, // extractable
-    ['deriveKey', 'deriveBits']
-  );
+  const keyPair = (await crypto.subtle.generateKey(
+    X25519_ALG,
+    true, // extractable (so public keys can be exported for the wire)
+    ['deriveBits']
+  )) as CryptoKeyPair;
 
   return {
     publicKey: keyPair.publicKey,
@@ -37,11 +44,11 @@ export async function generateKeyPair(): Promise<{
 }
 
 /**
- * Compute the shared secret from a private key and peer's public key.
- * 
- * @param privateKey - Our private key (CryptoKey)
- * @param publicKey - Peer's public key (CryptoKey)
- * @returns Promise resolving to the shared secret as ArrayBuffer
+ * Compute the X25519 shared secret from our private key and a peer's public key.
+ *
+ * @param privateKey - Our private key
+ * @param publicKey - Peer's public key
+ * @returns The 32-byte shared secret
  */
 export async function deriveSharedSecret(
   privateKey: CryptoKey,
@@ -51,24 +58,18 @@ export async function deriveSharedSecret(
     throw new Error('Web Crypto API deriveBits not available');
   }
 
-  const sharedSecret = await crypto.subtle.deriveBits(
-    {
-      name: 'ECDH',
-      public: publicKey,
-    },
+  return crypto.subtle.deriveBits(
+    { name: 'X25519', public: publicKey },
     privateKey,
     256 // X25519 produces 256 bits (32 bytes)
   );
-
-  return sharedSecret;
 }
 
 /**
- * Export a public key as raw bytes (32 bytes for X25519).
- * Useful for transmission over the wire.
- * 
+ * Export a public key as raw bytes (32 bytes for X25519) for transmission.
+ *
  * @param publicKey - The public key to export
- * @returns Promise resolving to ArrayBuffer of 32 bytes
+ * @returns 32 raw bytes
  */
 export async function exportPublicKeyRaw(publicKey: CryptoKey): Promise<ArrayBuffer> {
   if (!crypto?.subtle?.exportKey) {
@@ -79,10 +80,10 @@ export async function exportPublicKeyRaw(publicKey: CryptoKey): Promise<ArrayBuf
 }
 
 /**
- * Import a raw public key (32 bytes) back into a CryptoKey.
- * 
+ * Import a raw 32-byte public key back into a CryptoKey.
+ *
  * @param publicKeyRaw - Raw 32-byte public key
- * @returns Promise resolving to CryptoKey
+ * @returns The imported public CryptoKey
  */
 export async function importPublicKeyRaw(publicKeyRaw: ArrayBuffer): Promise<CryptoKey> {
   if (!crypto?.subtle?.importKey) {
@@ -92,11 +93,8 @@ export async function importPublicKeyRaw(publicKeyRaw: ArrayBuffer): Promise<Cry
   return crypto.subtle.importKey(
     'raw',
     publicKeyRaw,
-    {
-      name: 'ECDH',
-      namedCurve: 'X25519',
-    },
+    X25519_ALG,
     true, // extractable
-    [] // no_usages for public key
+    [] // public keys carry no usages
   );
 }

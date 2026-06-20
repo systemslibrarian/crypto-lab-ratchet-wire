@@ -413,122 +413,14 @@ CK[n+1] = HKDF(CK[n], salt=0x02, "ratchet-wire-chain")
                 </code></pre>
 
                 <h4>DH Ratchet:</h4>
-                <p>Uses X25519 ephemeral key pairs to derive a new root key:</p>
+                <p>Uses fresh X25519 key pairs to derive a new root key and a new chain key
+                  (the root key is the HKDF salt, the DH output is the input key material):</p>
                 <pre><code>
-root_new = HKDF(root_old, DH(my_private, their_public), "root")
-                </code></pre>
-              </section>
-
-              <section>
-                <h3>Key Properties</h3>
-                <ul>
-                  <li>
-                    <strong>One-way:</strong> Chain keys advance forward; you can't derive the
-                    previous chain key
-                  </li>
-                  <li>
-                    <strong>Deletable:</strong> Message keys are ephemeral; no stored history
-                  </li>
-                  <li>
-                    <strong>Testable:</strong> Both parties use the same HKDF labels, ensuring
-                    consistency
-                  </li>
-                </ul>
-              </section>
-
-              <section>
-                <h3>This Demo vs. Production</h3>
-                <p><strong>Simplified (for demo):</strong></p>
-                <ul>
-                  <li>No signature verification (X3DH is simplified)</li>
-                  <li>No one-time prekeys (OPK) in X3DH</li>
-                  <li>In-memory state only (no persistence)</li>
-                </ul>
-
-                <p><strong>Production (Signal, WhatsApp):</strong></p>
-                <ul>
-                  <li>Full X3DH with server assistance</li>
-                  <li>Periodic prekey rotation</li>
-                  <li>Double Ratchet with out-of-order handling</li>
-                  <li>Persistent state and key management</li>
-                </ul>
-              </section>
-
-              <section>
-                <h3>References</h3>
-                <ul>
-                  <li>
-                    <a href="https://signal.org/docs/specifications/doubleratchet/" target="_blank" rel="noopener noreferrer">
-                      Signal Double Ratchet Specification
-                      <span class="sr-only">(opens in new tab)</span>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="https://signal.org/docs/specifications/x3dh/" target="_blank" rel="noopener noreferrer">
-                      Signal X3DH Specification
-                      <span class="sr-only">(opens in new tab)</span>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="https://tools.ietf.org/html/rfc5869" target="_blank" rel="noopener noreferrer">
-                      RFC 5869: HKDF
-                      <span class="sr-only">(opens in new tab)</span>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="https://tools.ietf.org/html/rfc7748" target="_blank" rel="noopener noreferrer">
-                      RFC 7748: X25519
-                      <span class="sr-only">(opens in new tab)</span>
-                    </a>
-                  </li>
-                </ul>
-              </section>
-
-              <section>
-                <h3>Credits</h3>
-                <p>
-                  The Double Ratchet Algorithm was developed by
-                  <strong>Trevor Perrin and Moxie Marlinspike</strong> (2016), building on prior
-                  work in the
-                  <a href="https://otr.im/" target="_blank" rel="noopener noreferrer">
-                    Off-the-Record Messaging
-                    <span class="sr-only">(opens in new tab)</span>
-                  </a>
-                  protocol.
-                </p>
-              </section>
-            </article>
-          </div>
-        </main>
-      </div>
-    </div>
-
-    <!-- Screen reader announcements -->
-    <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true">                    <td>Forward Secrecy</td>
-                        <td>Every message sent</td>
-                        <td>Unique message key</td>
-                      </tr>
-                      <tr>
-                        <th scope="row"><strong>DH Ratchet</strong></th>
-                        <td>Break-in Recovery</td>
-                        <td>Direction change</td>
-                        <td>New root + chain keys</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <h4>Symmetric Ratchet:</h4>
-                <p>Uses HKDF to derive a unique message key from a chain key:</p>
-                <pre><code>
-MK[n] = HKDF(CK[n], salt=0x01, "ratchet-wire-message")
-CK[n+1] = HKDF(CK[n], salt=0x02, "ratchet-wire-chain")
-                </code></pre>
-
-                <h4>DH Ratchet:</h4>
-                <p>Uses X25519 ephemeral key pairs to derive a new root key:</p>
-                <pre><code>
-root_new = HKDF(root_old, DH(my_private, their_public), "root")
+root_new ‖ chain_key = HKDF(
+    ikm  = DH(my_private, their_public),
+    salt = root_old,
+    info = "ratchet-wire-root"
+)
                 </code></pre>
               </section>
 

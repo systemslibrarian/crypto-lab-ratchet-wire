@@ -1,81 +1,77 @@
 /**
- * Symmetric-key Ratchet (Message Keys and Chain Keys)
- * 
- * Reference: Signal Double Ratchet Specification, Section 2
+ * Symmetric-key Ratchet (Chain Keys -> Message Keys)
+ *
+ * Reference: Signal Double Ratchet Specification, Section 2.2 (KDF_CK)
  * https://signal.org/docs/specifications/doubleratchet/
- * 
- * The symmetric ratchet derives a sequence of unique message keys from a chain key,
- * using HKDF with domain-separated labels. Each message key is independent, enabling
- * recovery from key compromise (forward secrecy).
+ *
+ * The symmetric ratchet turns a chain key into a sequence of unique message
+ * keys. Each step derives:
+ *   - a message key (used once to encrypt/decrypt a single message), and
+ *   - the next chain key (which replaces the current one).
+ *
+ * Because the step is one-way (HKDF/HMAC cannot be inverted), deleting a message
+ * key after use means a later state compromise cannot recover earlier message
+ * keys — this is forward secrecy.
  */
 
 import { hkdf, DOMAIN_LABELS } from './hkdf';
 
 /**
- * Represents the state of a symmetric ratchet chain (KDF chain).
- * A chain key is advanced forward to derive message keys.
+ * State of a single symmetric (KDF) chain.
+ * The chain key is advanced forward to derive message keys.
  */
 export interface ChainState {
-  // Current chain key (32 bytes)
+  /** Current chain key (32 bytes). */
   chainKey: ArrayBuffer;
-  // Count of messages derived from this chain
+  /** Number of message keys already derived from this chain. */
   messageNumber: number;
 }
 
 /**
  * A derived message key with its sequence number.
- * MessageKey is intentionally ephemeral - the caller is responsible for
- * deleting it after use (e.g., for encryption). It must not be stored
- * in ChainState to maintain forward secrecy.
+ *
+ * A MessageKey is ephemeral: the caller uses it once and MUST clear it (see
+ * {@link clearKey}). It is never stored in {@link ChainState}, which is what
+ * preserves forward secrecy.
  */
 export interface MessageKey {
-  // Derived key (32 bytes) for encrypting a message
+  /** Derived key (32 bytes) for one message. */
   key: ArrayBuffer;
-  // The message sequence number this key encrypts
+  /** The message sequence number this key corresponds to. */
   messageNumber: number;
 }
 
+// Single-byte domain separators (Signal uses constant inputs to KDF_CK).
+const MESSAGE_KEY_SALT = new Uint8Array([0x01]).buffer;
+const CHAIN_KEY_SALT = new Uint8Array([0x02]).buffer;
+
 /**
- * Perform one step of the symmetric ratchet.
- * 
- * From the current chain key, derive:
- * 1. A message key for encrypting the current message
- * 2. A new chain key for advancing the ratchet
- * 
- * The returned message key is ephemeral and MUST be deleted after use.
- * The returned ChainState has the new chain key and incremented message number.
- * 
+ * Perform one symmetric-ratchet step (KDF_CK).
+ *
+ * From the current chain key, derives the message key for the current message
+ * and the next chain key. Domain-separated salts/labels guarantee the message
+ * key and the next chain key are independent.
+ *
+ * The returned message key is ephemeral and MUST be cleared after use. The
+ * returned state holds the next chain key and an incremented message number.
+ *
  * @param state - Current chain state
- * @returns Object containing new chain state and ephemeral message key
- * 
- * @example
- * const state = { chainKey, messageNumber: 0 };
- * const { newState, messageKey } = await ratchetStep(state);
- * // Use messageKey for encryption here
- * // Then securely delete messageKey.key (it's out of scope)
- * state = newState; // Advance chain
+ * @returns The advanced chain state and the ephemeral message key
  */
 export async function ratchetStep(state: ChainState): Promise<{
   newState: ChainState;
   messageKey: MessageKey;
 }> {
-  // Using fixed salts for domain separation within the ratchet
-  // Salt 0x01 for message keys, 0x02 for chain keys
-  const messageSalt = new Uint8Array([0x01]).buffer;
-  const chainSalt = new Uint8Array([0x02]).buffer;
-
-  // Derive message key from current chain key
   const derivedMessageKey = await hkdf(
     state.chainKey,
-    messageSalt,
+    MESSAGE_KEY_SALT,
     DOMAIN_LABELS.MESSAGE,
     32
   );
 
-  // Derive next chain key from current chain key
   const derivedChainKey = await hkdf(
     state.chainKey,
-    chainSalt,
+    CHAIN_KEY_SALT,
     DOMAIN_LABELS.CHAIN,
     32
   );
@@ -93,15 +89,14 @@ export async function ratchetStep(state: ChainState): Promise<{
 }
 
 /**
- * Securely clear key material from memory.
- * 
- * This is a helper for consuming code to explicitly clear sensitive key material.
- * JavaScript's garbage collection cannot guarantee immediate memory release,
- * but overwriting with zeros helps when sensitive keys are held in heap buffers.
- * 
- * @param buffer - ArrayBuffer to clear (fills with zeros)
+ * Overwrite key material with zeros.
+ *
+ * JavaScript's garbage collector cannot guarantee prompt release of heap
+ * buffers, so we zero sensitive material explicitly once it is no longer
+ * needed. This is best-effort, not a hard guarantee.
+ *
+ * @param buffer - Buffer to clear
  */
 export function clearKey(buffer: ArrayBuffer): void {
-  const view = new Uint8Array(buffer);
-  view.fill(0);
+  new Uint8Array(buffer).fill(0);
 }

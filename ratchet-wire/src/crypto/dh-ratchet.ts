@@ -1,125 +1,106 @@
 /**
  * Diffie-Hellman Ratchet (Root Key Chain)
- * 
- * Reference: Signal Double Ratchet Specification, Section 3
+ *
+ * Reference: Signal Double Ratchet Specification, Section 3.3 (DHRatchet)
  * https://signal.org/docs/specifications/doubleratchet/
- * 
- * The DH ratchet updates the root key by performing X25519 key agreements.
- * It serves two purposes:
- * 1. Break-in recovery: A new root key is computed from fresh ephemeral keys,
- *    making it impossible for an attacker holding the old root to compute the new one.
- * 2. Authentication: Each party confirms they control the DH keys they published.
+ *
+ * The DH ratchet advances the root key whenever the conversation changes
+ * direction. It is what gives the protocol break-in recovery (a.k.a.
+ * post-compromise security): each step mixes in a fresh X25519 key pair, so an
+ * attacker who has captured the old state cannot compute the new root key
+ * without the new private keys.
  */
 
-import { generateKeyPair, deriveSharedSecret } from './x25519';
-import { hkdf, DOMAIN_LABELS } from './hkdf';
-import { ChainState } from './symmetric-ratchet';
+import { generateKeyPair, deriveSharedSecret, KeyPair } from './x25519';
+import { kdfRk } from './hkdf';
+import { ChainState, clearKey } from './symmetric-ratchet';
 
 /**
- * Complete ratchet state including both root key and sending/receiving chain keys.
+ * Complete Double Ratchet state for one party.
+ *
+ * Field names follow the Signal specification:
+ *   - rootKey                  = RK
+ *   - myDHKeyPair              = DHs  (our current ratchet key pair)
+ *   - theirDHPublicKey         = DHr  (their current ratchet public key)
+ *   - sendingChain             = CKs / Ns
+ *   - receivingChain           = CKr / Nr
+ *   - previousSendingChainLength = PN
+ *
+ * `sendingChain` and `receivingChain` are nullable because a party may not have
+ * a given chain yet. In particular the responder (Bob) has no chains until he
+ * receives the initiator's first message and performs his first DH ratchet.
  */
 export interface RatchetState {
-  // Root key from which chain keys are derived
   rootKey: ArrayBuffer;
-  // Sending chain (for messages we encrypt)
-  sendingChain: ChainState;
-  // Receiving chain (for messages we decrypt)
-  receivingChain: ChainState;
-  // Our current DH key pair
-  myDHKeyPair: {
-    publicKey: CryptoKey;
-    privateKey: CryptoKey;
-  };
-  // Peer's current DH public key
-  theirDHPublicKey: CryptoKey;
-  // Count of DH ratchet steps (for diagnostics)
+  myDHKeyPair: KeyPair;
+  theirDHPublicKey: CryptoKey | null;
+  sendingChain: ChainState | null;
+  receivingChain: ChainState | null;
+  /** Number of messages sent in the previous sending chain (header field PN). */
+  previousSendingChainLength: number;
+  /** Number of DH ratchet steps performed (for the visualization/diagnostics). */
   dhRatchetCount: number;
 }
 
 /**
- * Perform one DH ratchet step.
- * 
+ * Perform a full DH ratchet step (Signal's DHRatchet), run by the receiver when
+ * it sees a message carrying a new DHr.
+ *
  * Steps:
- * 1. Compute DH shared secret with current keys
- * 2. Derive new root key and receiving chain key from shared secret
- * 3. Generate new ephemeral DH key pair
- * 4. Compute new DH shared secret with the new private key
- * 5. Derive new root key and sending chain key from the new shared secret
- * 6. Delete old key material
- * 7. Return updated ratchet state
- * 
- * @param state - Current ratchet state (with old root key, old DH key pair)
- * @param theirNewPublicKey - Their new DH public key (triggers the ratchet)
- * @returns Updated ratchet state with new root key, DH key pair, and chain keys
- * 
- * This operation is triggered when:
- * - Alice sends a message (she creates new ephemeral key)
- * - Bob receives it (Bob recognizes a new pubkey in the header and ratchets forward)
+ *   1. PN = length of our current sending chain; reset Ns/Nr.
+ *   2. DHr = theirNewPublicKey.
+ *   3. (RK, CKr) = KDF_RK(RK, DH(DHs, DHr))     -- receiving half
+ *   4. DHs = generate a fresh key pair.
+ *   5. (RK, CKs) = KDF_RK(RK, DH(DHs, DHr))     -- sending half
+ *
+ * Convergence: the sender produced its sending chain from the SAME (RK, DH)
+ * pair we use in step 3, because X25519 commutes — so our new receiving chain
+ * equals the sender's sending chain.
+ *
+ * @param state - Current ratchet state
+ * @param theirNewPublicKey - The peer's new ratchet public key (from the header)
+ * @returns A new ratchet state (the input state is not mutated)
  */
-export async function dhRatchetStep(
+export async function dhRatchet(
   state: RatchetState,
   theirNewPublicKey: CryptoKey
 ): Promise<RatchetState> {
-  // Step 1: Compute first DH shared secret
-  // This derives the new root key and receiving chain key
-  const dh = await deriveSharedSecret(state.myDHKeyPair.privateKey, theirNewPublicKey);
+  const previousSendingChainLength = state.sendingChain?.messageNumber ?? 0;
 
-  // Step 2: Derive root and receiving chain keys from first DH
-  const rootAndReceivingChainMaterial = await hkdf(
-    state.rootKey,
-    dh,
-    DOMAIN_LABELS.ROOT,
-    64 // 32 bytes root + 32 bytes chain key
+  // Receiving half: derive the chain that decrypts the incoming message.
+  const dhReceive = await deriveSharedSecret(
+    state.myDHKeyPair.privateKey,
+    theirNewPublicKey
   );
+  const recv = await kdfRk(state.rootKey, dhReceive);
 
-  const newRootKeyBuffer = rootAndReceivingChainMaterial.slice(0, 32);
-  const receivingChainKeyBuffer = rootAndReceivingChainMaterial.slice(32, 64);
+  // Generate a fresh ratchet key pair for ourselves.
+  const newDHKeyPair = await generateKeyPair();
 
-  // Step 3: Generate fresh DH key pair for ourselves
-  const newMyDHKeyPair = await generateKeyPair();
-
-  // Step 4: Compute second DH shared secret with new key pair
-  const dh2 = await deriveSharedSecret(newMyDHKeyPair.privateKey, theirNewPublicKey);
-
-  // Step 5: Derive root and sending chain keys from second DH
-  const rootAndSendingChainMaterial = await hkdf(
-    newRootKeyBuffer,
-    dh2,
-    DOMAIN_LABELS.ROOT,
-    64 // 32 bytes root + 32 bytes chain key
+  // Sending half: derive the chain we will use for our replies.
+  const dhSend = await deriveSharedSecret(
+    newDHKeyPair.privateKey,
+    theirNewPublicKey
   );
+  const send = await kdfRk(recv.rootKey, dhSend);
 
-  const finalRootKeyBuffer = rootAndSendingChainMaterial.slice(0, 32);
-  const sendingChainKeyBuffer = rootAndSendingChainMaterial.slice(32, 64);
-
-  // Step 6: Clear sensitive old key material from memory
-  clearKeyMaterial(state.rootKey);
-  clearKeyMaterial(dh);
-  clearKeyMaterial(dh2);
+  // Best-effort wipe of secrets this function owns. We deliberately do NOT wipe
+  // the input `state.rootKey`: this function is non-mutating (callers, including
+  // decrypt(), treat the input state as immutable and may still hold it after a
+  // failed/forged message). Zeroing the caller's buffer here would corrupt the
+  // session if AEAD authentication later fails. The superseded root key is
+  // released by the old, discarded state and reclaimed by the GC.
+  clearKey(recv.rootKey);
+  clearKey(dhReceive);
+  clearKey(dhSend);
 
   return {
-    rootKey: finalRootKeyBuffer,
-    sendingChain: {
-      chainKey: sendingChainKeyBuffer,
-      messageNumber: 0,
-    },
-    receivingChain: {
-      chainKey: receivingChainKeyBuffer,
-      messageNumber: 0,
-    },
-    myDHKeyPair: newMyDHKeyPair,
+    rootKey: send.rootKey,
+    myDHKeyPair: newDHKeyPair,
     theirDHPublicKey: theirNewPublicKey,
+    sendingChain: { chainKey: send.chainKey, messageNumber: 0 },
+    receivingChain: { chainKey: recv.chainKey, messageNumber: 0 },
+    previousSendingChainLength,
     dhRatchetCount: state.dhRatchetCount + 1,
   };
-}
-
-/**
- * Securely clear key material from memory.
- * Overwrites the buffer with zeros to prevent unintended retention in memory.
- * 
- * @param buffer - ArrayBuffer to clear
- */
-function clearKeyMaterial(buffer: ArrayBuffer): void {
-  const view = new Uint8Array(buffer);
-  view.fill(0);
 }
