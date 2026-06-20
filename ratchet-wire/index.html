@@ -487,6 +487,36 @@
               </section>
 
               <section>
+                <h3>Notation Cheat-Sheet</h3>
+                <p>The specs (and this demo's labels) use a compact shorthand. Keep this handy:</p>
+                <div class="comparison-table" tabindex="0" role="region" aria-label="Notation reference">
+                  <table>
+                    <caption class="sr-only">Double Ratchet and X3DH notation</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Symbol</th>
+                        <th scope="col">Meaning</th>
+                        <th scope="col">Stage</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr><th scope="row"><code>IK</code></th><td>Identity Key — long-term key identifying a party</td><td>X3DH</td></tr>
+                      <tr><th scope="row"><code>EK</code></th><td>Ephemeral Key — Alice's one-off key for this handshake</td><td>X3DH</td></tr>
+                      <tr><th scope="row"><code>SPK</code></th><td>Signed Pre-Key — Bob's medium-term key, signed by his IK</td><td>X3DH</td></tr>
+                      <tr><th scope="row"><code>OPK</code></th><td>One-Time Pre-Key — Bob's single-use key (the 4th DH)</td><td>X3DH</td></tr>
+                      <tr><th scope="row"><code>SK</code></th><td>Shared secret from X3DH; becomes the first root key</td><td>X3DH</td></tr>
+                      <tr><th scope="row"><code>RK</code></th><td>Root Key — advanced by the DH ratchet</td><td>Double Ratchet</td></tr>
+                      <tr><th scope="row"><code>CK</code></th><td>Chain Key — advanced by the symmetric ratchet</td><td>Double Ratchet</td></tr>
+                      <tr><th scope="row"><code>MK</code></th><td>Message Key — used once to encrypt/decrypt one message</td><td>Double Ratchet</td></tr>
+                      <tr><th scope="row"><code>DHs / DHr</code></th><td>Our / their current ratchet key pair (sending / receiving)</td><td>Double Ratchet</td></tr>
+                      <tr><th scope="row"><code>Ns / Nr</code></th><td>Message number in the sending / receiving chain</td><td>Double Ratchet</td></tr>
+                      <tr><th scope="row"><code>PN</code></th><td>Previous-chain length — # of messages in the prior sending chain</td><td>Double Ratchet</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section>
                 <h3>Two Ratchets</h3>
                 <div class="comparison-table" tabindex="0" role="region" aria-label="Comparison of ratchet types">
                   <table>
