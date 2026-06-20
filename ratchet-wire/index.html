@@ -89,6 +89,19 @@
             aria-labelledby="tab-conversation"
             tabindex="0"
           >
+            <section class="handshake-banner" aria-label="Session handshake status">
+              <div class="handshake-headline">
+                <span class="handshake-badge" id="handshake-badge">🔒 Identity verified</span>
+                <span class="handshake-detail" id="handshake-detail"></span>
+              </div>
+              <div class="handshake-actions">
+                <button id="mitm-demo-btn" type="button" class="btn btn-ghost">
+                  Simulate a tampered pre-key
+                </button>
+                <p class="mitm-result" id="mitm-result" role="status" hidden></p>
+              </div>
+            </section>
+
             <div class="conversation-layout">
               <div class="conversation-panel">
                 <div
@@ -442,20 +455,46 @@ root_new ‖ chain_key = HKDF(
               </section>
 
               <section>
-                <h3>This Demo vs. Production</h3>
-                <p><strong>Simplified (for demo):</strong></p>
+                <h3>Authenticated X3DH</h3>
+                <p>
+                  Session setup runs the full <strong>X3DH</strong> ("Extended Triple Diffie-Hellman")
+                  key agreement and <strong>authenticates</strong> it:
+                </p>
                 <ul>
-                  <li>No signature verification (X3DH is simplified)</li>
-                  <li>No one-time prekeys (OPK) in X3DH</li>
-                  <li>In-memory state only (no persistence)</li>
+                  <li>
+                    <strong>Signed pre-key:</strong> Bob signs his pre-key with his long-term
+                    <strong>Ed25519 identity key</strong>; Alice verifies that signature before
+                    deriving anything. A man-in-the-middle who swaps the pre-key is rejected — try the
+                    <em>"Simulate a tampered pre-key"</em> button on the Conversation tab.
+                  </li>
+                  <li>
+                    <strong>One-time pre-key:</strong> a single-use key contributes a fourth DH, so
+                    the session stays secret even if Bob's long-term keys later leak.
+                  </li>
+                </ul>
+                <pre><code>
+verify  Sig(IK_B, SPK_B)            ← abort on MITM
+SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
+                </code></pre>
+              </section>
+
+              <section>
+                <h3>This Demo vs. Production</h3>
+                <p><strong>Faithful to the spec here:</strong></p>
+                <ul>
+                  <li>Authenticated X3DH (signed pre-key signature + one-time pre-key)</li>
+                  <li>Double Ratchet with out-of-order handling and skipped-key bounds</li>
+                  <li>Low-order public keys rejected; message headers bound as AEAD associated data</li>
                 </ul>
 
-                <p><strong>Production (Signal, WhatsApp):</strong></p>
+                <p><strong>Still simplified (for the demo):</strong></p>
                 <ul>
-                  <li>Full X3DH with server assistance</li>
-                  <li>Periodic prekey rotation</li>
-                  <li>Double Ratchet with out-of-order handling</li>
-                  <li>Persistent state and key management</li>
+                  <li>
+                    Identity uses a separate Ed25519 signing key + X25519 DH key, where production
+                    Signal uses a single key via <strong>XEdDSA</strong> (not exposed by Web Crypto)
+                  </li>
+                  <li>No pre-key server, prekey rotation, or OPK-exhaustion handling</li>
+                  <li>In-memory state only (no persistence)</li>
                 </ul>
               </section>
 

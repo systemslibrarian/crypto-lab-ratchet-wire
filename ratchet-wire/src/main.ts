@@ -7,16 +7,30 @@ import './style.css';
 import { RatchetState } from './crypto/dh-ratchet';
 import { encrypt, decrypt, Message, SkippedKeys } from './crypto/double-ratchet';
 import { generateKeyPair } from './crypto/x25519';
+import { generateSigningKeyPair } from './crypto/ed25519';
 import {
+  createBobPrekeyBundle,
   initiateSessionX3DH,
   acceptSessionX3DH,
   createAliceRatchetState,
   createBobRatchetState,
+  BobPreSessionKeys,
+  BobPrekeyBundle,
 } from './crypto/session-init';
 
 interface ConversationMessage {
   sender: 'Alice' | 'Bob';
   text: string;
+}
+
+/** Authentication outcome of the X3DH handshake, for display. */
+interface HandshakeInfo {
+  /** True once Bob's signed pre-key signature has been verified. */
+  verified: boolean;
+  /** Short fingerprint of Bob's Ed25519 identity key. */
+  bobIdentityFingerprint: string;
+  /** Short fingerprint of Alice's identity key. */
+  aliceIdentityFingerprint: string;
 }
 
 /** A fully-initialized Double Ratchet session (initiator + responder). */
@@ -25,6 +39,7 @@ interface Session {
   bob: RatchetState;
   aliceSkipped: SkippedKeys;
   bobSkipped: SkippedKeys;
+  handshake: HandshakeInfo;
 }
 
 type ThemeMode = 'dark' | 'light';
@@ -41,31 +56,46 @@ function syncThemeToggle(button: HTMLButtonElement) {
   button.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
 }
 
-/** Run the full X3DH handshake and initialize both ratchets. */
+/** Generate a fresh set of Bob's secret pre-session keys. */
+async function generateBobKeys(): Promise<BobPreSessionKeys> {
+  return {
+    identityKeyPair: await generateKeyPair(),
+    identitySigningKeyPair: await generateSigningKeyPair(),
+    signedPreKeyPair: await generateKeyPair(),
+    oneTimePreKeyPair: await generateKeyPair(),
+  };
+}
+
+/** Run the authenticated X3DH handshake and initialize both ratchets. */
 async function buildSession(): Promise<Session> {
   const aliceIK = await generateKeyPair();
   const aliceEK = await generateKeyPair();
-  const bobIK = await generateKeyPair();
-  const bobSPK = await generateKeyPair();
   const aliceRatchet = await generateKeyPair();
-  const bobRatchet = await generateKeyPair();
 
+  const bobKeys = await generateBobKeys();
+  const bobBundle = await createBobPrekeyBundle(bobKeys);
+
+  // initiateSessionX3DH verifies Bob's signed pre-key signature and THROWS if
+  // it does not check out, so reaching the next line means authentication held.
   const aliceSession = await initiateSessionX3DH(
     { identityKeyPair: aliceIK, ephemeralKeyPair: aliceEK },
-    bobIK.publicKey,
-    bobSPK.publicKey
+    bobBundle
   );
-  const bobSession = await acceptSessionX3DH(
-    { identityKeyPair: bobIK, signedPreKeyPair: bobSPK },
-    aliceIK.publicKey,
-    aliceEK.publicKey
-  );
+  const bobSession = await acceptSessionX3DH(bobKeys, aliceIK.publicKey, aliceEK.publicKey);
+
+  const handshake: HandshakeInfo = {
+    verified: true,
+    bobIdentityFingerprint: await fingerprint(bobBundle.identitySigningKey),
+    aliceIdentityFingerprint: await fingerprint(aliceIK.publicKey),
+  };
 
   return {
-    alice: await createAliceRatchetState(aliceSession, aliceRatchet, bobRatchet.publicKey),
-    bob: createBobRatchetState(bobSession, bobRatchet),
+    // Bob's signed pre-key doubles as his initial ratchet key (as in Signal).
+    alice: await createAliceRatchetState(aliceSession, aliceRatchet, bobKeys.signedPreKeyPair.publicKey),
+    bob: createBobRatchetState(bobSession, bobKeys.signedPreKeyPair),
     aliceSkipped: new Map(),
     bobSkipped: new Map(),
+    handshake,
   };
 }
 
@@ -73,6 +103,16 @@ function hex(buffer: ArrayBuffer, bytes = 8): string {
   return Array.from(new Uint8Array(buffer).slice(0, bytes))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
+    .toUpperCase();
+}
+
+/** A short, human-comparable fingerprint of a public key (SHA-256, 8 bytes). */
+async function fingerprint(publicKey: CryptoKey): Promise<string> {
+  const raw = await crypto.subtle.exportKey('raw', publicKey);
+  const digest = await crypto.subtle.digest('SHA-256', raw);
+  return Array.from(new Uint8Array(digest).slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join(' ')
     .toUpperCase();
 }
 
@@ -145,6 +185,10 @@ class RatchetWireApp {
       }
     });
 
+    document.getElementById('mitm-demo-btn')?.addEventListener('click', () => {
+      void this.demoTamperedPrekey();
+    });
+
     document.getElementById('compromise-btn')?.addEventListener('click', () => {
       void this.startCompromise();
     });
@@ -155,7 +199,57 @@ class RatchetWireApp {
       void this.recoveryBobReceives();
     });
 
+    this.renderHandshake();
     this.renderRatchetViz();
+  }
+
+  /** Show the authenticated-handshake banner (fingerprint + verified state). */
+  private renderHandshake() {
+    const { handshake } = this.session;
+    const badge = document.getElementById('handshake-badge');
+    const detail = document.getElementById('handshake-detail');
+    if (badge) badge.textContent = handshake.verified ? '🔒 Identity verified' : '⚠️ Unverified';
+    if (detail) {
+      detail.textContent =
+        `Bob's signed pre-key was checked against his Ed25519 identity ` +
+        `(fingerprint ${handshake.bobIdentityFingerprint}).`;
+    }
+  }
+
+  /**
+   * Demonstrate that the handshake is authenticated: tamper with Bob's signed
+   * pre-key signature (as a man-in-the-middle would have to) and show that X3DH
+   * refuses to proceed.
+   */
+  private async demoTamperedPrekey() {
+    const result = document.getElementById('mitm-result') as HTMLParagraphElement | null;
+    const show = (text: string, blocked: boolean) => {
+      if (!result) return;
+      result.textContent = text;
+      result.hidden = false;
+      result.classList.toggle('mitm-blocked', blocked);
+      result.classList.toggle('mitm-failed', !blocked);
+    };
+
+    try {
+      const aliceIK = await generateKeyPair();
+      const aliceEK = await generateKeyPair();
+      const bobKeys = await generateBobKeys();
+      const bundle = await createBobPrekeyBundle(bobKeys);
+
+      // A man-in-the-middle can swap Bob's pre-key but cannot forge his identity
+      // signature over it — model the resulting invalid signature by flipping a
+      // byte, then watch Alice's X3DH reject the bundle.
+      const forgedSig = bundle.signedPreKeySignature.slice(0);
+      new Uint8Array(forgedSig)[0] ^= 0xff;
+      const tampered: BobPrekeyBundle = { ...bundle, signedPreKeySignature: forgedSig };
+
+      await initiateSessionX3DH({ identityKeyPair: aliceIK, ephemeralKeyPair: aliceEK }, tampered);
+      show('Unexpected: the tampered pre-key was accepted — this should never happen.', false);
+    } catch (err) {
+      show(`✓ Blocked: ${(err as Error).message}`, true);
+      this.announce('Man-in-the-middle attempt blocked: the tampered pre-key signature was rejected.');
+    }
   }
 
   // --- Main conversation -----------------------------------------------------

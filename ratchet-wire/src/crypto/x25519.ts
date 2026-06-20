@@ -46,9 +46,17 @@ export async function generateKeyPair(): Promise<KeyPair> {
 /**
  * Compute the X25519 shared secret from our private key and a peer's public key.
  *
+ * Rejects a non-contributory (all-zero) result. A peer who supplies a low-order
+ * public key (the identity element or one of the small-order points on the
+ * curve) can force the shared secret to a fixed, publicly-known all-zero value,
+ * stripping the exchange of its secrecy. RFC 7748 §6.1 permits implementations
+ * to detect this by checking for an all-zero output; we do, and abort. (The
+ * scalar clamping X25519 performs makes the check sufficient here.)
+ *
  * @param privateKey - Our private key
  * @param publicKey - Peer's public key
  * @returns The 32-byte shared secret
+ * @throws Error if the peer's public key is a low-order point (zero shared secret)
  */
 export async function deriveSharedSecret(
   privateKey: CryptoKey,
@@ -58,11 +66,26 @@ export async function deriveSharedSecret(
     throw new Error('Web Crypto API deriveBits not available');
   }
 
-  return crypto.subtle.deriveBits(
+  const secret = await crypto.subtle.deriveBits(
     { name: 'X25519', public: publicKey },
     privateKey,
     256 // X25519 produces 256 bits (32 bytes)
   );
+
+  if (isAllZero(secret)) {
+    throw new Error(
+      'X25519 produced an all-zero shared secret — the peer public key is a low-order point and is rejected.'
+    );
+  }
+
+  return secret;
+}
+
+/** Constant-time-ish all-zero check (no early exit on the first non-zero byte). */
+function isAllZero(buffer: ArrayBuffer): boolean {
+  let acc = 0;
+  for (const b of new Uint8Array(buffer)) acc |= b;
+  return acc === 0;
 }
 
 /**

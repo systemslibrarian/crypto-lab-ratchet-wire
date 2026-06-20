@@ -130,7 +130,11 @@ export async function decrypt(
         updatedSkipped
       );
     }
-    workingState = await dhRatchet(workingState, await importPublicKeyRaw(base64ToArrayBuffer(senderPubB64)));
+    const senderPubRaw = decodeBase64(senderPubB64, 'DH public key');
+    if (senderPubRaw.byteLength !== 32) {
+      throw new Error('Malformed message header: DH public key must be 32 bytes.');
+    }
+    workingState = await dhRatchet(workingState, await importPublicKeyRaw(senderPubRaw));
   }
 
   if (!workingState.receivingChain) {
@@ -188,6 +192,9 @@ async function skipMessageKeys(
  * the wrong key). Fail fast with a clear error instead.
  */
 function validateHeader(header: Message['header']): void {
+  if (typeof header.dhPublicKey !== 'string' || header.dhPublicKey.length === 0) {
+    throw new Error('Malformed message header: missing DH public key.');
+  }
   const isCount = (n: number): boolean => Number.isInteger(n) && n >= 0;
   if (!isCount(header.messageNumber) || !isCount(header.previousChainLength)) {
     throw new Error('Malformed message header: message numbers must be non-negative integers.');
@@ -266,13 +273,19 @@ async function decryptAESGCM(
   keyMaterial: ArrayBuffer,
   aad: ArrayBuffer
 ): Promise<string> {
+  const iv = decodeBase64(ivB64, 'IV');
+  if (iv.byteLength !== 12) {
+    throw new Error('Malformed message: AES-GCM IV must be 12 bytes.');
+  }
+  const ciphertext = decodeBase64(ciphertextB64, 'ciphertext');
+
   const key = await crypto.subtle.importKey('raw', keyMaterial, { name: 'AES-GCM' }, false, [
     'decrypt',
   ]);
   const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToArrayBuffer(ivB64), additionalData: aad },
+    { name: 'AES-GCM', iv, additionalData: aad },
     key,
-    base64ToArrayBuffer(ciphertextB64)
+    ciphertext
   );
   return new TextDecoder().decode(plaintext);
 }
@@ -286,8 +299,19 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64);
+/**
+ * Decode base64 to bytes, turning the runtime's opaque `atob` failure into a
+ * clear, attributable error. Wire fields arrive from an untrusted source, so a
+ * malformed `ciphertext`/`iv`/key should fail as a clean protocol error rather
+ * than leak through as a raw `DOMException`.
+ */
+function decodeBase64(base64: string, label: string): ArrayBuffer {
+  let binary: string;
+  try {
+    binary = atob(base64);
+  } catch {
+    throw new Error(`Malformed message: ${label} is not valid base64.`);
+  }
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);

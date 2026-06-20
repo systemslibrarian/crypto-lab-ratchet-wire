@@ -49,21 +49,29 @@ The Double Ratchet combines:
    - Derives a new root key when the sender's key changes
    - Provides break-in recovery: a compromised root key cannot produce future keys
 
+### What this demo implements
+
+- ✓ Full Double Ratchet encryption/decryption
+- ✓ X25519 key exchange (with low-order public-key rejection)
+- ✓ HKDF key derivation
+- ✓ AES-256-GCM message encryption with the header bound as associated data
+- ✓ Out-of-order message handling with a bounded skipped-key store
+- ✓ **Authenticated X3DH**: Ed25519-signed pre-keys (verified before use) plus a
+  one-time pre-key for the fourth DH
+
 ### Simplified vs. Production
 
-**This demo implements:**
-- ✓ Full Double Ratchet encryption/decryption
-- ✓ X25519 key exchange
-- ✓ HKDF key derivation
-- ✓ AES-256-GCM message encryption
-- ✓ Out-of-order message handling
-- ✓ Simplified X3DH session initialization
+**Faithful to the spec here:**
+- Signed pre-key signature verification — a tampered/substituted pre-key is
+  rejected (see the *"Simulate a tampered pre-key"* button in the app)
+- One-time pre-key contributing the 4th DH (`SK = HKDF(DH1‖DH2‖DH3‖DH4)`)
+- Out-of-order delivery, skipped-key bounds, and AEAD-bound headers
 
-**Production (Signal, WhatsApp) adds:**
-- Cryptographic signatures on pre-keys
-- One-time pre-keys (OPK) in X3DH
+**Production (Signal, WhatsApp) additionally has:**
+- A single identity key for both DH and signing via **XEdDSA** (Web Crypto has
+  no XEdDSA, so this demo uses a separate Ed25519 signing key + X25519 DH key)
+- A pre-key server, periodic prekey rotation, and OPK-exhaustion handling
 - Persistent state management
-- Server-assisted registration
 
 ## Cryptographic Primitives
 
@@ -72,21 +80,24 @@ The Double Ratchet combines:
 | Key Exchange | X25519 via Web Crypto | RFC 7748 |
 | Key Derivation | HKDF-SHA256 via Web Crypto | RFC 5869 |
 | Message Encryption | AES-256-GCM via Web Crypto | NIST |
-| Session Init | Simplified X3DH | Signal X3DH Spec |
+| Identity Signatures | Ed25519 via Web Crypto | RFC 8032 |
+| Session Init | Authenticated X3DH | Signal X3DH Spec |
 
 ## Architecture
 
 ```
 src/
 ├── crypto/
-│   ├── x25519.ts              # X25519 key agreement
-│   ├── hkdf.ts                # HKDF key derivation
+│   ├── x25519.ts              # X25519 key agreement (+ low-order rejection)
+│   ├── ed25519.ts             # Ed25519 signatures (handshake authentication)
+│   ├── hkdf.ts                # HKDF key derivation + KDF_RK
 │   ├── symmetric-ratchet.ts   # Message key derivation
 │   ├── dh-ratchet.ts          # Root key derivation
 │   ├── double-ratchet.ts      # Full encryption/decryption
-│   └── session-init.ts        # X3DH simplified setup
+│   └── session-init.ts        # Authenticated X3DH setup
 ├── __tests__/
 │   ├── primitives.test.ts
+│   ├── ed25519.test.ts
 │   ├── symmetric-ratchet.test.ts
 │   ├── dh-ratchet.test.ts
 │   ├── double-ratchet.test.ts
@@ -102,11 +113,15 @@ npm run test
 ```
 
 Tests verify:
-- RFC 5869 HKDF test vectors pass
-- X25519 key agreement produces matching shared secrets
+- RFC 5869 HKDF test vectors pass (Appendix A.1 and A.2)
+- X25519 key agreement produces matching shared secrets; low-order keys rejected
+- Ed25519 signatures authenticate the handshake; tampered/substituted pre-keys
+  and wrong-identity signatures are rejected
 - Symmetric ratchet produces unique, non-recoverable keys
 - Full end-to-end encryption with out-of-order delivery
-- X3DH produces matching session keys
+- A forged message cannot corrupt receiver state; oversized/malformed headers
+  are rejected before any key derivation
+- Authenticated X3DH produces matching session keys
 
 ## Key Insights
 

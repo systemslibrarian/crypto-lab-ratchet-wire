@@ -125,6 +125,17 @@ describe('Double Ratchet Integration', () => {
     await expect(decrypt(bob, forged, bobSkipped)).rejects.toThrow(/skip/i);
   });
 
+  it('rejects malformed wire fields with a clean error (not a raw DOMException)', async () => {
+    const { message } = await encrypt(alice, 'hi');
+
+    const badCiphertext: Message = { ...message, ciphertext: '!!!not base64!!!' };
+    await expect(decrypt(bob, badCiphertext, bobSkipped)).rejects.toThrow(/base64|malformed/i);
+
+    // A wrong-length IV (here, 4 bytes) must be rejected as a protocol error.
+    const shortIv: Message = { ...message, iv: btoa('abcd') };
+    await expect(decrypt(bob, shortIv, bobSkipped)).rejects.toThrow(/iv|malformed/i);
+  });
+
   it('rejects a malformed header (negative / fractional / NaN message number)', async () => {
     const { message } = await encrypt(alice, 'hi');
     for (const bad of [-1, 1.5, NaN]) {
