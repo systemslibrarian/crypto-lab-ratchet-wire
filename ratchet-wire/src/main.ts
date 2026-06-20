@@ -25,6 +25,8 @@ interface ConversationMessage {
   text: string;
   /** Fingerprint of the chain key (CK[Ns]) that produced this message's key. */
   chainKeyFp: string;
+  /** Sending-chain generation (sender's DH-ratchet count) when this was sent. */
+  chainGen: number;
   /** The on-the-wire header/IV, surfaced in the per-message inspector. */
   wire: {
     /** Sender's current ratchet public key (header.dhPublicKey), shortened. */
@@ -424,20 +426,22 @@ export class RatchetWireApp {
     const s = this.session;
     if (from === 'Alice') {
       const chainKeyFp = hex(s.alice.sendingChain!.chainKey);
+      const chainGen = s.alice.dhRatchetCount;
       const { message, newState } = await encrypt(s.alice, text);
       s.alice = newState;
       const r = await decrypt(s.bob, message, s.bobSkipped);
       s.bob = r.newState;
       s.bobSkipped = r.skippedKeys;
-      this.conversation.push({ sender: 'Alice', text: r.plaintext, chainKeyFp, wire: wireInfo(message) });
+      this.conversation.push({ sender: 'Alice', text: r.plaintext, chainKeyFp, chainGen, wire: wireInfo(message) });
     } else {
       const chainKeyFp = hex(s.bob.sendingChain!.chainKey);
+      const chainGen = s.bob.dhRatchetCount;
       const { message, newState } = await encrypt(s.bob, text);
       s.bob = newState;
       const r = await decrypt(s.alice, message, s.aliceSkipped);
       s.alice = r.newState;
       s.aliceSkipped = r.skippedKeys;
-      this.conversation.push({ sender: 'Bob', text: r.plaintext, chainKeyFp, wire: wireInfo(message) });
+      this.conversation.push({ sender: 'Bob', text: r.plaintext, chainKeyFp, chainGen, wire: wireInfo(message) });
     }
     this.renderConversation();
   }
@@ -540,8 +544,10 @@ export class RatchetWireApp {
 
       const derivation = document.createElement('code');
       derivation.className = 'mk-derivation';
+      // The chain generation distinguishes the fresh chain after each DH ratchet,
+      // where the message number Ns resets back to 0.
       derivation.textContent =
-        `CK[${msg.wire.messageNumber}] ${msg.chainKeyFp} → MK[${msg.wire.messageNumber}]`;
+        `chain ${msg.chainGen}: CK[${msg.wire.messageNumber}] ${msg.chainKeyFp} → MK[${msg.wire.messageNumber}]`;
 
       const fate = document.createElement('span');
       fate.className = 'mk-fate';
@@ -635,8 +641,14 @@ export class RatchetWireApp {
       const consumed = before.filter((n) => !after.includes(n));
 
       const parts = [`Delivered m${index} → "${item.text}".`];
-      if (stored.length) parts.push(`Stored skipped keys for ${stored.map((n) => `m${n}`).join(', ')}.`);
-      if (consumed.length) parts.push(`Consumed the stored key for m${consumed.join(', m')}.`);
+      if (stored.length)
+        parts.push(
+          `Stored skipped key${stored.length > 1 ? 's' : ''} for ${stored.map((n) => `m${n}`).join(', ')}.`
+        );
+      if (consumed.length)
+        parts.push(
+          `Consumed the stored key${consumed.length > 1 ? 's' : ''} for ${consumed.map((n) => `m${n}`).join(', ')}.`
+        );
       if (!stored.length && !consumed.length) parts.push('In-order — no skipped keys needed.');
       this.oooLog = parts.join(' ');
     } catch (err) {
