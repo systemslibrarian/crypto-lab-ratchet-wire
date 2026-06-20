@@ -541,6 +541,116 @@ a:hover {
   color: var(--color-text);
 }
 
+/* ---- Out-of-order delivery demo ---- */
+.ooo-panel {
+  background-color: var(--color-bg-light);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.ooo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.ooo-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .ooo-layout {
+    grid-template-columns: 1.4fr 1fr;
+  }
+}
+
+.ooo-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ooo-msg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.ooo-msg.delivered {
+  border-left: 3px solid var(--color-bob);
+  opacity: 0.85;
+}
+
+.ooo-msg-label {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  min-width: 3ch;
+}
+
+.ooo-msg.delivered .ooo-msg-label {
+  color: var(--color-bob);
+}
+
+.ooo-msg-text {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.ooo-deliver {
+  min-height: auto;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.8125rem;
+}
+
+.ooo-store {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem;
+  align-self: start;
+}
+
+.ooo-store-count {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-warning);
+  margin-bottom: 0.65rem;
+}
+
+.ooo-store-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 1.75rem;
+}
+
+.ooo-key-chip {
+  padding: 0.2rem 0.55rem;
+  background-color: var(--color-bg-light);
+  border: 1px solid var(--color-warning);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-warning);
+}
+
+.ooo-log {
+  margin-top: 0.9rem;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
 /* ---- X3DH handshake breakdown ---- */
 .x3dh-panel {
   background-color: var(--color-bg-light);

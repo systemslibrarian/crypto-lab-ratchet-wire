@@ -92,6 +92,30 @@ describe('App integration (DOM smoke test)', () => {
     expect(wire!.textContent).toContain('header.dhPublicKey');
   });
 
+  it('out-of-order demo: delivering m2 first stores skipped keys for m0 and m1', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    (document.getElementById('ooo-generate') as HTMLButtonElement).click();
+    await waitFor(() => document.querySelectorAll('#ooo-pending .ooo-deliver').length === 5);
+
+    // Deliver m2 first (the third Deliver button).
+    const deliverButtons = document.querySelectorAll<HTMLButtonElement>('#ooo-pending .ooo-deliver');
+    deliverButtons[2].click();
+
+    await waitFor(() => document.querySelectorAll('#ooo-store-keys .ooo-key-chip').length === 2);
+    const chips = Array.from(document.querySelectorAll('#ooo-store-keys .ooo-key-chip')).map(
+      (c) => c.textContent
+    );
+    expect(chips).toEqual(['m0', 'm1']);
+    expect(document.getElementById('ooo-store-count')!.textContent).toBe('2 keys held');
+
+    // Now deliver m0 — it should consume the stored key, leaving only m1.
+    document.querySelector<HTMLButtonElement>('#ooo-pending .ooo-deliver')!.click();
+    await waitFor(() => document.querySelectorAll('#ooo-store-keys .ooo-key-chip').length === 1);
+    expect(document.querySelector('#ooo-store-keys .ooo-key-chip')!.textContent).toBe('m1');
+  });
+
   it('demonstrates the MITM defense: a tampered pre-key is blocked', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();

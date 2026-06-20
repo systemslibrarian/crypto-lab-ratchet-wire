@@ -36,6 +36,18 @@ interface ConversationMessage {
   };
 }
 
+/**
+ * The message numbers currently held in a skipped-key store, sorted ascending.
+ * Store keys have the form `${senderRatchetKeyB64}:${messageNumber}` and base64
+ * never contains a colon, so the number is the suffix after the last colon.
+ */
+function skippedNumbers(skipped: SkippedKeys): number[] {
+  return Array.from(skipped.keys())
+    .map((k) => Number(k.slice(k.lastIndexOf(':') + 1)))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+}
+
 /** Extract the teaching-relevant wire fields from an encrypted message. */
 function wireInfo(message: Message): ConversationMessage['wire'] {
   return {
@@ -155,6 +167,13 @@ export class RatchetWireApp {
   private recoverySnapshotRoot: string | null = null;
   private recoveryPending: Message | null = null;
 
+  // Out-of-order delivery demo (separate session for determinism).
+  private ooo: {
+    session: Session;
+    pending: { index: number; message: Message; text: string; delivered: boolean }[];
+  } | null = null;
+  private oooLog = '';
+
   // UI elements.
   private messagesContainer!: HTMLDivElement;
   private messageInput!: HTMLInputElement;
@@ -215,6 +234,15 @@ export class RatchetWireApp {
 
     document.getElementById('mitm-demo-btn')?.addEventListener('click', () => {
       void this.demoTamperedPrekey();
+    });
+
+    document.getElementById('ooo-generate')?.addEventListener('click', () => {
+      void this.oooGenerate();
+    });
+    document.getElementById('ooo-reset')?.addEventListener('click', () => {
+      this.ooo = null;
+      this.oooLog = '';
+      this.renderOoo();
     });
 
     document.getElementById('compromise-btn')?.addEventListener('click', () => {
@@ -529,6 +557,106 @@ export class RatchetWireApp {
       else content.setAttribute('hidden', '');
     });
     if (tabName === 'state') this.renderRatchetViz();
+  }
+
+  // --- Out-of-order delivery demo --------------------------------------------
+
+  /** Build a fresh session and pre-encrypt a batch of Alice→Bob messages. */
+  private async oooGenerate() {
+    const session = await buildSession();
+    const pending: NonNullable<typeof this.ooo>['pending'] = [];
+    for (let i = 0; i < 5; i++) {
+      const text = `Message ${i}`;
+      const { message, newState } = await encrypt(session.alice, text);
+      session.alice = newState;
+      pending.push({ index: i, message, text, delivered: false });
+    }
+    this.ooo = { session, pending };
+    this.oooLog = 'Generated 5 messages. Deliver them in any order.';
+    this.renderOoo();
+  }
+
+  /** Deliver one pending message to Bob and report the skipped-store delta. */
+  private async oooDeliver(index: number) {
+    if (!this.ooo) return;
+    const item = this.ooo.pending.find((p) => p.index === index);
+    if (!item || item.delivered) return;
+
+    const s = this.ooo.session;
+    const before = skippedNumbers(s.bobSkipped);
+    try {
+      const r = await decrypt(s.bob, item.message, s.bobSkipped);
+      s.bob = r.newState;
+      s.bobSkipped = r.skippedKeys;
+      item.delivered = true;
+
+      const after = skippedNumbers(s.bobSkipped);
+      const stored = after.filter((n) => !before.includes(n));
+      const consumed = before.filter((n) => !after.includes(n));
+
+      const parts = [`Delivered m${index} → "${item.text}".`];
+      if (stored.length) parts.push(`Stored skipped keys for ${stored.map((n) => `m${n}`).join(', ')}.`);
+      if (consumed.length) parts.push(`Consumed the stored key for m${consumed.join(', m')}.`);
+      if (!stored.length && !consumed.length) parts.push('In-order — no skipped keys needed.');
+      this.oooLog = parts.join(' ');
+    } catch (err) {
+      this.oooLog = `m${index} failed to decrypt: ${(err as Error).message}`;
+    }
+    this.renderOoo();
+  }
+
+  /** Render the pending-message queue and Bob's skipped-key store. */
+  private renderOoo() {
+    const pendingEl = document.getElementById('ooo-pending');
+    const countEl = document.getElementById('ooo-store-count');
+    const keysEl = document.getElementById('ooo-store-keys');
+    const logEl = document.getElementById('ooo-log');
+    if (!pendingEl || !countEl || !keysEl || !logEl) return;
+
+    pendingEl.innerHTML = '';
+    if (!this.ooo) {
+      pendingEl.innerHTML = '<p class="empty-state">Generate a batch to begin.</p>';
+      countEl.textContent = '0 keys held';
+      keysEl.innerHTML = '';
+      logEl.textContent = '';
+      return;
+    }
+
+    for (const item of this.ooo.pending) {
+      const card = document.createElement('div');
+      card.className = `ooo-msg${item.delivered ? ' delivered' : ''}`;
+
+      const label = document.createElement('span');
+      label.className = 'ooo-msg-label';
+      label.textContent = item.delivered ? `m${item.index} ✓` : `m${item.index}`;
+      card.appendChild(label);
+
+      if (item.delivered) {
+        const text = document.createElement('span');
+        text.className = 'ooo-msg-text';
+        text.textContent = item.text;
+        card.appendChild(text);
+      } else {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-success ooo-deliver';
+        btn.textContent = 'Deliver';
+        btn.addEventListener('click', () => void this.oooDeliver(item.index));
+        card.appendChild(btn);
+      }
+      pendingEl.appendChild(card);
+    }
+
+    const held = skippedNumbers(this.ooo.session.bobSkipped);
+    countEl.textContent = `${held.length} key${held.length === 1 ? '' : 's'} held`;
+    keysEl.innerHTML = '';
+    for (const n of held) {
+      const chip = document.createElement('span');
+      chip.className = 'ooo-key-chip';
+      chip.textContent = `m${n}`;
+      keysEl.appendChild(chip);
+    }
+    logEl.textContent = this.oooLog;
   }
 
   // --- Break-in recovery simulation -----------------------------------------

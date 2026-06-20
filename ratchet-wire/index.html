@@ -57,6 +57,17 @@
             </button>
             <button
               class="tab-btn"
+              data-tab="ooo"
+              role="tab"
+              id="tab-ooo"
+              aria-selected="false"
+              aria-controls="ooo"
+              tabindex="-1"
+            >
+              Out of Order
+            </button>
+            <button
+              class="tab-btn"
               data-tab="state"
               role="tab"
               id="tab-state"
@@ -234,6 +245,49 @@
                   <li><strong>DH4</strong> mixes in Bob's <em>one-time</em> pre-key — so the session stays secret even if Bob's long-term keys later leak.</li>
                 </ul>
               </section>
+            </div>
+          </div>
+
+          <!-- Tab: Out-of-order delivery + skipped-key store -->
+          <div
+            id="ooo"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="tab-ooo"
+            tabindex="0"
+            hidden
+          >
+            <div class="ooo-panel">
+              <h3>Out-of-Order Delivery</h3>
+              <p class="panel-desc">
+                Networks reorder and drop packets, so messages don't always arrive in the order they
+                were sent. The Double Ratchet copes by deriving the message keys it had to skip and
+                storing them, so a late-arriving message still decrypts. Generate a batch, then deliver
+                them in any order and watch Bob's skipped-key store fill up and drain.
+              </p>
+
+              <div class="ooo-controls">
+                <button id="ooo-generate" type="button" class="btn btn-primary">
+                  Generate 5 messages from Alice
+                </button>
+                <button id="ooo-reset" type="button" class="btn btn-ghost">Reset</button>
+              </div>
+
+              <div class="ooo-layout">
+                <section class="ooo-queue" aria-label="Alice's messages, awaiting delivery">
+                  <h4>Alice's messages</h4>
+                  <div id="ooo-pending" class="ooo-pending">
+                    <p class="empty-state">Generate a batch to begin.</p>
+                  </div>
+                </section>
+
+                <aside class="ooo-store" aria-label="Bob's skipped-key store">
+                  <h4>Bob's skipped-key store</h4>
+                  <p id="ooo-store-count" class="ooo-store-count">0 keys held</p>
+                  <div id="ooo-store-keys" class="ooo-store-keys"></div>
+                  <p id="ooo-log" class="ooo-log" role="status"></p>
+                </aside>
+              </div>
             </div>
           </div>
 

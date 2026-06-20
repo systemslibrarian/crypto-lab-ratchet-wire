@@ -13,6 +13,19 @@ Ratchet Wire demonstrates:
 - **Key Ratcheting**: How ephemeral keys derive ever-changing encryption keys
 - **Out-of-Order Delivery**: Handling messages that arrive in unexpected order
 
+### Interactive views
+
+- **Conversation** — send messages between Alice and Bob; each message has a
+  collapsible *wire format* inspector showing the header the ratchet actually
+  sends (ratchet key, message number Ns, previous-chain-length PN, IV).
+- **X3DH Handshake** — the live signed-pre-key check and the four Diffie-Hellman
+  terms combining via HKDF into the session root key. Plus a one-click
+  *"Simulate a tampered pre-key"* showing the man-in-the-middle defense reject it.
+- **Out of Order** — deliver a batch of messages in any order and watch Bob's
+  skipped-key store fill and drain.
+- **Break-In Recovery** — compromise Bob's keys, then watch a DH ratchet lock the
+  attacker out.
+
 ## Running Locally
 
 ```bash
