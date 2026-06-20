@@ -114,6 +114,25 @@
         </nav>
 
         <main id="main-content">
+          <!-- Guided, step-by-step tour that drives the tabs -->
+          <section class="guide" id="guide" aria-label="Guided tour">
+            <button class="guide-reopen" id="guide-reopen" type="button" hidden>
+              <span aria-hidden="true">▸ </span>Show guided tour
+            </button>
+            <div class="guide-panel" id="guide-panel">
+              <div class="guide-head">
+                <span class="guide-step" id="guide-step"></span>
+                <button class="guide-dismiss" id="guide-dismiss" type="button">Hide guide</button>
+              </div>
+              <h3 class="guide-title" id="guide-title"></h3>
+              <p class="guide-text" id="guide-text"></p>
+              <div class="guide-nav">
+                <button class="btn btn-ghost" id="guide-back" type="button">← Back</button>
+                <button class="btn btn-primary" id="guide-next" type="button">Next →</button>
+              </div>
+            </div>
+          </section>
+
           <!-- Tab 1: Live Conversation -->
           <div
             id="conversation"
@@ -122,21 +141,6 @@
             aria-labelledby="tab-conversation"
             tabindex="0"
           >
-            <p class="learn-path" id="learn-path" role="note">
-              <span class="learn-path-label">New here?</span>
-              <span>Suggested path:</span>
-              <button type="button" class="learn-link" data-goto="x3dh">① X3DH Handshake</button>
-              <span aria-hidden="true">→</span>
-              <span>② send a message below</span>
-              <span aria-hidden="true">→</span>
-              <button type="button" class="learn-link" data-goto="state">③ Ratchet State</button>
-              <span aria-hidden="true">→</span>
-              <button type="button" class="learn-link" data-goto="fs">④ Forward Secrecy</button>
-              <span aria-hidden="true">/</span>
-              <button type="button" class="learn-link" data-goto="compromise">Break-In Recovery</button>
-              <button type="button" class="learn-path-dismiss" id="learn-path-dismiss" aria-label="Dismiss this hint">×</button>
-            </p>
-
             <section class="handshake-banner" aria-label="Session handshake status">
               <div class="handshake-headline">
                 <span class="handshake-badge" id="handshake-badge">🔒 Identity verified</span>
@@ -173,7 +177,7 @@
                       <span aria-hidden="true">✨ </span>Send a sample message
                     </button>
                     <p class="intro-cta-next">
-                      New to this? Follow the <strong>suggested path</strong> at the top of this tab.
+                      New to this? Follow the <strong>guided tour</strong> at the top of the page.
                     </p>
                   </div>
                 </div>

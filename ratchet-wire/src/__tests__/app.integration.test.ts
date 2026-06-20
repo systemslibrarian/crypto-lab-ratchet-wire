@@ -54,27 +54,31 @@ async function waitFor(predicate: () => boolean, timeoutMs = 4000): Promise<void
 
 describe('App integration (DOM smoke test)', () => {
   beforeEach(() => {
-    localStorage.removeItem('learnPathDismissed');
+    localStorage.removeItem('guideHidden');
     document.documentElement.setAttribute('data-theme', 'dark');
     document.body.innerHTML = bodyInner;
   });
 
-  it('shows a dismissible learning-path signpost whose links switch tabs', async () => {
-    localStorage.removeItem('learnPathDismissed');
+  it('the guided tour steps forward and drives the tabs', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();
 
-    const path = document.getElementById('learn-path') as HTMLParagraphElement;
-    expect(path.hidden).toBe(false);
+    const panel = document.getElementById('guide-panel') as HTMLElement;
+    expect(panel.hidden).toBe(false);
+    expect(document.getElementById('guide-step')!.textContent).toBe(`Step 1 of 7`);
+    expect((document.getElementById('guide-back') as HTMLButtonElement).disabled).toBe(true);
 
-    // A path link jumps to the corresponding tab.
-    path.querySelector<HTMLButtonElement>('.learn-link[data-goto="x3dh"]')!.click();
+    // Next advances to the handshake step and switches on the X3DH tab.
+    (document.getElementById('guide-next') as HTMLButtonElement).click();
+    expect(document.getElementById('guide-step')!.textContent).toBe('Step 2 of 7');
     expect(document.getElementById('tab-x3dh')!.getAttribute('aria-selected')).toBe('true');
 
-    // Dismissing hides it and is remembered.
-    (document.getElementById('learn-path-dismiss') as HTMLButtonElement).click();
-    expect(path.hidden).toBe(true);
-    expect(localStorage.getItem('learnPathDismissed')).toBe('1');
+    // Hide is remembered; reopen restores the panel.
+    (document.getElementById('guide-dismiss') as HTMLButtonElement).click();
+    expect(panel.hidden).toBe(true);
+    expect(localStorage.getItem('guideHidden')).toBe('1');
+    (document.getElementById('guide-reopen') as HTMLButtonElement).click();
+    expect(panel.hidden).toBe(false);
   });
 
   it('boots, shows a verified handshake with a fingerprint', async () => {

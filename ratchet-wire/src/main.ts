@@ -104,7 +104,52 @@ interface Session {
 type ThemeMode = 'dark' | 'light';
 
 const THEME_STORAGE_KEY = 'theme';
-const LEARN_PATH_KEY = 'learnPathDismissed';
+const GUIDE_HIDDEN_KEY = 'guideHidden';
+
+/** A single step of the guided tour. `tab` is switched to when the step opens. */
+interface GuideStep {
+  title: string;
+  text: string;
+  tab: string;
+}
+
+const GUIDE_STEPS: GuideStep[] = [
+  {
+    title: 'Welcome',
+    tab: 'conversation',
+    text: 'This is a live, end-to-end-encrypted chat between Alice and Bob — real cryptography running in your browser. This guide walks through it in a few short steps. Press Next to begin.',
+  },
+  {
+    title: 'Step 1 — The handshake (X3DH)',
+    tab: 'x3dh',
+    text: "Before any message is sent, Alice and Bob agree on a shared root key. Here you can see Bob's signed pre-key being verified and four Diffie-Hellman secrets combining (via HKDF) into the root key SK. When you've had a look, press Next.",
+  },
+  {
+    title: 'Step 2 — Send a message',
+    tab: 'conversation',
+    text: 'Now send one: type a message and press Send, or use “Send a sample message”. Alice really encrypts it and Bob really decrypts it. Watch the Key State panel on the right change, then press Next.',
+  },
+  {
+    title: 'Step 3 — The DH ratchet (break-in recovery)',
+    tab: 'conversation',
+    text: 'Use the coach’s “Reply as Bob” button and send. Changing direction makes the receiver perform a DH ratchet, replacing the root key with one an attacker holding the old key cannot derive. Watch the Root Key change, then press Next.',
+  },
+  {
+    title: 'Step 4 — The symmetric ratchet (forward secrecy)',
+    tab: 'conversation',
+    text: 'Send another message in the same direction. No DH ratchet this time — just a one-time message key that is used once and deleted. The Ratchet State tab shows each key being derived and destroyed. Press Next.',
+  },
+  {
+    title: 'Step 5 — Attack forward secrecy',
+    tab: 'fs',
+    text: 'Press “Run demo”, then move the attacker’s compromise point. Messages before it stay safe (their keys are gone forever); messages after it are exposed — until the next DH ratchet. Press Next for the last step.',
+  },
+  {
+    title: 'Step 6 — Explore on your own',
+    tab: 'conversation',
+    text: 'That’s the Double Ratchet! Two more tabs to try: “Out of Order” (deliver messages in any order and watch the skipped-key store) and “Break-In Recovery” (compromise Bob, then lock the attacker out). Press Finish to hide this guide — you can reopen it any time.',
+  },
+];
 
 /** localStorage reads/writes that never throw (private mode, embedded webviews, etc.). */
 function readStored(key: string): string | null {
@@ -324,30 +369,78 @@ export class RatchetWireApp {
       void this.recoveryBobReceives();
     });
 
-    this.setupLearnPath();
+    this.setupGuide();
     this.renderHandshake();
     this.renderX3DH();
     this.renderRatchetViz();
   }
 
-  /**
-   * Wire the dismissible "suggested path" signpost: its links jump to the
-   * relevant tab, and dismissing it is remembered so it never nags on return.
-   */
-  private setupLearnPath() {
-    const learnPath = document.getElementById('learn-path');
-    if (!learnPath) return;
+  // --- Guided tour -----------------------------------------------------------
 
-    if (readStored(LEARN_PATH_KEY) === '1') {
-      learnPath.hidden = true;
+  private guideStep = 0;
+  private guideHidden = false;
+
+  /** Wire the step-by-step guided tour and render its initial state. */
+  private setupGuide() {
+    this.guideHidden = readStored(GUIDE_HIDDEN_KEY) === '1';
+
+    document.getElementById('guide-next')?.addEventListener('click', () => {
+      if (this.guideStep >= GUIDE_STEPS.length - 1) {
+        this.guideHidden = true; // "Finish"
+        writeStored(GUIDE_HIDDEN_KEY, '1');
+      } else {
+        this.guideStep += 1;
+      }
+      this.renderGuide();
+    });
+    document.getElementById('guide-back')?.addEventListener('click', () => {
+      if (this.guideStep > 0) this.guideStep -= 1;
+      this.renderGuide();
+    });
+    document.getElementById('guide-dismiss')?.addEventListener('click', () => {
+      this.guideHidden = true;
+      writeStored(GUIDE_HIDDEN_KEY, '1');
+      this.renderGuide();
+    });
+    document.getElementById('guide-reopen')?.addEventListener('click', () => {
+      this.guideHidden = false;
+      writeStored(GUIDE_HIDDEN_KEY, '0');
+      this.renderGuide();
+    });
+
+    this.renderGuide();
+  }
+
+  /** Render the current guide step (or the collapsed "show tour" button). */
+  private renderGuide() {
+    const panel = document.getElementById('guide-panel');
+    const reopen = document.getElementById('guide-reopen');
+    if (!panel || !reopen) return;
+
+    if (this.guideHidden) {
+      panel.hidden = true;
+      reopen.hidden = false;
+      return;
     }
-    learnPath.querySelectorAll<HTMLButtonElement>('.learn-link').forEach((link) => {
-      link.addEventListener('click', () => this.switchTab(link.dataset.goto!));
-    });
-    document.getElementById('learn-path-dismiss')?.addEventListener('click', () => {
-      learnPath.hidden = true;
-      writeStored(LEARN_PATH_KEY, '1');
-    });
+    panel.hidden = false;
+    reopen.hidden = true;
+
+    const step = GUIDE_STEPS[this.guideStep];
+    const set = (id: string, text: string) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    set('guide-step', `Step ${this.guideStep + 1} of ${GUIDE_STEPS.length}`);
+    set('guide-title', step.title);
+    set('guide-text', step.text);
+
+    const back = document.getElementById('guide-back') as HTMLButtonElement | null;
+    const next = document.getElementById('guide-next') as HTMLButtonElement | null;
+    if (back) back.disabled = this.guideStep === 0;
+    if (next) next.textContent = this.guideStep === GUIDE_STEPS.length - 1 ? 'Finish' : 'Next →';
+
+    // Each step drives the relevant tab — this is the "link to the next part".
+    this.switchTab(step.tab);
   }
 
   /** Populate the X3DH handshake-breakdown tab from this session's derivation. */

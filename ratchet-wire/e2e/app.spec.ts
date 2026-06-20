@@ -11,6 +11,19 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
 
+test('the guided tour advances step-by-step and drives the tabs', async ({ page }) => {
+  await expect(page.locator('#guide-panel')).toBeVisible();
+  await expect(page.locator('#guide-step')).toHaveText('Step 1 of 7');
+
+  await page.click('#guide-next');
+  await expect(page.locator('#guide-step')).toHaveText('Step 2 of 7');
+  await expect(page.locator('#tab-x3dh')).toHaveAttribute('aria-selected', 'true');
+
+  await page.click('#guide-dismiss');
+  await expect(page.locator('#guide-panel')).toBeHidden();
+  await expect(page.locator('#guide-reopen')).toBeVisible();
+});
+
 test('boots with an authenticated handshake', async ({ page }) => {
   await expect(page.locator('#handshake-badge')).toContainText('Identity verified');
   await expect(page.locator('#handshake-detail')).toContainText(/[0-9A-F]{2}( [0-9A-F]{2}){7}/);
