@@ -107,16 +107,15 @@ function hex(buffer: ArrayBuffer, bytes = 8): string {
 }
 
 /** A short, human-comparable fingerprint of a public key (SHA-256, 8 bytes). */
-async function fingerprint(publicKey: CryptoKey): Promise<string> {
-  const raw = await crypto.subtle.exportKey('raw', publicKey);
-  const digest = await crypto.subtle.digest('SHA-256', raw);
+async function fingerprint(publicKey: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(publicKey));
   return Array.from(new Uint8Array(digest).slice(0, 8))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join(' ')
     .toUpperCase();
 }
 
-class RatchetWireApp {
+export class RatchetWireApp {
   // Main conversation session.
   private session!: Session;
   private conversation: ConversationMessage[] = [];

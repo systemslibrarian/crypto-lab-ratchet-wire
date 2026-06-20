@@ -33,7 +33,7 @@ import { ChainState, clearKey } from './symmetric-ratchet';
 export interface RatchetState {
   rootKey: ArrayBuffer;
   myDHKeyPair: KeyPair;
-  theirDHPublicKey: CryptoKey | null;
+  theirDHPublicKey: Uint8Array | null;
   sendingChain: ChainState | null;
   receivingChain: ChainState | null;
   /** Number of messages sent in the previous sending chain (header field PN). */
@@ -63,7 +63,7 @@ export interface RatchetState {
  */
 export async function dhRatchet(
   state: RatchetState,
-  theirNewPublicKey: CryptoKey
+  theirNewPublicKey: Uint8Array
 ): Promise<RatchetState> {
   const previousSendingChainLength = state.sendingChain?.messageNumber ?? 0;
 

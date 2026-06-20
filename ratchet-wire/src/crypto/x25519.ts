@@ -3,89 +3,57 @@
  *
  * Reference: RFC 7748 - Elliptic Curves for Security
  * https://tools.ietf.org/html/rfc7748
- * https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey
  *
- * Uses the standard Web Crypto `X25519` algorithm (a dedicated key-agreement
- * algorithm in the W3C spec), supported by modern browsers and Node's
- * `crypto.webcrypto`. Note: this is NOT the same as `ECDH` with
- * `namedCurve: 'X25519'`, a non-standard form some older Chromium builds
- * accepted but which is unrecognized elsewhere.
+ * Implemented with the audited, pure-JavaScript `@noble/curves` library rather
+ * than the Web Crypto `X25519` algorithm. Web Crypto only gained X25519 very
+ * recently (Chrome 133, 2025) and support is uneven across browsers, so relying
+ * on it would make the demo fail to load on perfectly common setups. `@noble`
+ * runs identically in every browser AND in Node, which also means the test
+ * suite exercises exactly the same code path the browser does.
+ *
+ * Keys are represented as raw 32-byte `Uint8Array`s (the natural wire format).
+ * The functions are kept `async` so call sites read the same as the rest of the
+ * crypto layer (HKDF/AES-GCM, which remain genuinely async via Web Crypto).
  */
 
-/** The Web Crypto algorithm identifier for X25519 key agreement. */
-const X25519_ALG = { name: 'X25519' } as const;
+import { x25519 } from '@noble/curves/ed25519.js';
+import { toArrayBuffer } from './bytes';
 
+/** A raw X25519 key pair (32-byte public + 32-byte secret scalar). */
 export interface KeyPair {
-  publicKey: CryptoKey;
-  privateKey: CryptoKey;
+  publicKey: Uint8Array;
+  privateKey: Uint8Array;
 }
 
 /**
  * Generate an X25519 key pair.
  *
- * @returns The public and private CryptoKeys
- * @throws Error if Web Crypto / X25519 is unavailable
+ * @returns The raw public and private keys
  */
 export async function generateKeyPair(): Promise<KeyPair> {
-  if (!globalThis.crypto?.subtle?.generateKey) {
-    throw new Error('Web Crypto API not available in this environment');
-  }
-
-  const keyPair = (await crypto.subtle.generateKey(
-    X25519_ALG,
-    true, // extractable (so public keys can be exported for the wire)
-    ['deriveBits']
-  )) as CryptoKeyPair;
-
-  return {
-    publicKey: keyPair.publicKey,
-    privateKey: keyPair.privateKey,
-  };
+  const privateKey = x25519.utils.randomSecretKey();
+  const publicKey = x25519.getPublicKey(privateKey);
+  return { publicKey, privateKey };
 }
 
 /**
  * Compute the X25519 shared secret from our private key and a peer's public key.
  *
- * Rejects a non-contributory (all-zero) result. A peer who supplies a low-order
- * public key (the identity element or one of the small-order points on the
- * curve) can force the shared secret to a fixed, publicly-known all-zero value,
- * stripping the exchange of its secrecy. RFC 7748 §6.1 permits implementations
- * to detect this by checking for an all-zero output; we do, and abort. (The
- * scalar clamping X25519 performs makes the check sufficient here.)
+ * `@noble` rejects non-contributory inputs (the identity element and the other
+ * small-order points), so a peer who supplies a low-order public key to force a
+ * fixed, publicly-known shared secret is refused with a thrown error rather than
+ * silently producing predictable key material (cf. RFC 7748 §6.1).
  *
- * @param privateKey - Our private key
- * @param publicKey - Peer's public key
+ * @param privateKey - Our private key (32-byte scalar)
+ * @param publicKey - Peer's public key (32 bytes)
  * @returns The 32-byte shared secret
- * @throws Error if the peer's public key is a low-order point (zero shared secret)
+ * @throws Error if the peer's public key is a low-order point
  */
 export async function deriveSharedSecret(
-  privateKey: CryptoKey,
-  publicKey: CryptoKey
+  privateKey: Uint8Array,
+  publicKey: Uint8Array
 ): Promise<ArrayBuffer> {
-  if (!crypto?.subtle?.deriveBits) {
-    throw new Error('Web Crypto API deriveBits not available');
-  }
-
-  const secret = await crypto.subtle.deriveBits(
-    { name: 'X25519', public: publicKey },
-    privateKey,
-    256 // X25519 produces 256 bits (32 bytes)
-  );
-
-  if (isAllZero(secret)) {
-    throw new Error(
-      'X25519 produced an all-zero shared secret — the peer public key is a low-order point and is rejected.'
-    );
-  }
-
-  return secret;
-}
-
-/** Constant-time-ish all-zero check (no early exit on the first non-zero byte). */
-function isAllZero(buffer: ArrayBuffer): boolean {
-  let acc = 0;
-  for (const b of new Uint8Array(buffer)) acc |= b;
-  return acc === 0;
+  return toArrayBuffer(x25519.getSharedSecret(privateKey, publicKey));
 }
 
 /**
@@ -94,30 +62,21 @@ function isAllZero(buffer: ArrayBuffer): boolean {
  * @param publicKey - The public key to export
  * @returns 32 raw bytes
  */
-export async function exportPublicKeyRaw(publicKey: CryptoKey): Promise<ArrayBuffer> {
-  if (!crypto?.subtle?.exportKey) {
-    throw new Error('Web Crypto API exportKey not available');
-  }
-
-  return crypto.subtle.exportKey('raw', publicKey);
+export async function exportPublicKeyRaw(publicKey: Uint8Array): Promise<ArrayBuffer> {
+  return toArrayBuffer(publicKey);
 }
 
 /**
- * Import a raw 32-byte public key back into a CryptoKey.
+ * Import a raw 32-byte public key. Validates the length so a malformed wire key
+ * fails here with a clear error rather than deep inside a DH computation.
  *
  * @param publicKeyRaw - Raw 32-byte public key
- * @returns The imported public CryptoKey
+ * @returns The public key as a `Uint8Array`
  */
-export async function importPublicKeyRaw(publicKeyRaw: ArrayBuffer): Promise<CryptoKey> {
-  if (!crypto?.subtle?.importKey) {
-    throw new Error('Web Crypto API importKey not available');
+export async function importPublicKeyRaw(publicKeyRaw: ArrayBuffer | Uint8Array): Promise<Uint8Array> {
+  const bytes = publicKeyRaw instanceof Uint8Array ? publicKeyRaw : new Uint8Array(publicKeyRaw);
+  if (bytes.byteLength !== 32) {
+    throw new Error('Invalid X25519 public key: expected 32 bytes.');
   }
-
-  return crypto.subtle.importKey(
-    'raw',
-    publicKeyRaw,
-    X25519_ALG,
-    true, // extractable
-    [] // public keys carry no usages
-  );
+  return bytes;
 }

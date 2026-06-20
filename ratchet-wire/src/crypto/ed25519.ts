@@ -9,39 +9,36 @@
  * before deriving the session secret. Without this check a man-in-the-middle
  * could substitute their own pre-key and silently sit between the two parties.
  *
+ * Implemented with the audited `@noble/curves` library rather than Web Crypto:
+ * browser Web Crypto support for Ed25519 is very recent (Chrome 137, 2025) and
+ * absent from many installed browsers, so using it would make the handshake
+ * throw on load. `@noble` behaves identically in every browser and in Node.
+ *
  * Note: production Signal uses XEdDSA, which lets a single Montgomery (X25519)
- * key do BOTH Diffie-Hellman and signing. The Web Crypto API does not expose
- * XEdDSA, so we model the identity as a dedicated Ed25519 signing key alongside
- * the X25519 key used for DH. The security property (the SPK is bound to a
- * long-term identity the verifier can pin) is the same.
+ * key do BOTH Diffie-Hellman and signing. We instead model the identity as a
+ * dedicated Ed25519 signing key alongside the X25519 key used for DH. The
+ * security property (the SPK is bound to a long-term identity the verifier can
+ * pin) is the same, and it keeps the two roles legible for learners.
  */
 
-/** The Web Crypto algorithm identifier for Ed25519 signatures. */
-const ED25519_ALG = { name: 'Ed25519' } as const;
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { asUint8Array, toArrayBuffer } from './bytes';
 
-/** An Ed25519 signing key pair. */
+/** An Ed25519 signing key pair (32-byte public + 32-byte secret). */
 export interface SigningKeyPair {
-  publicKey: CryptoKey;
-  privateKey: CryptoKey;
+  publicKey: Uint8Array;
+  privateKey: Uint8Array;
 }
 
 /**
  * Generate an Ed25519 signing key pair.
  *
- * @returns The public (verify) and private (sign) CryptoKeys
- * @throws Error if Web Crypto / Ed25519 is unavailable
+ * @returns The public (verify) and private (sign) keys
  */
 export async function generateSigningKeyPair(): Promise<SigningKeyPair> {
-  if (!globalThis.crypto?.subtle?.generateKey) {
-    throw new Error('Web Crypto API not available in this environment');
-  }
-
-  const keyPair = (await crypto.subtle.generateKey(ED25519_ALG, true, [
-    'sign',
-    'verify',
-  ])) as CryptoKeyPair;
-
-  return { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
+  const privateKey = ed25519.utils.randomSecretKey();
+  const publicKey = ed25519.getPublicKey(privateKey);
+  return { publicKey, privateKey };
 }
 
 /**
@@ -51,19 +48,15 @@ export async function generateSigningKeyPair(): Promise<SigningKeyPair> {
  * @param data - The bytes to sign
  * @returns A 64-byte Ed25519 signature
  */
-export async function sign(privateKey: CryptoKey, data: BufferSource): Promise<ArrayBuffer> {
-  if (!crypto?.subtle?.sign) {
-    throw new Error('Web Crypto API sign not available');
-  }
-  return crypto.subtle.sign(ED25519_ALG, privateKey, data);
+export async function sign(privateKey: Uint8Array, data: BufferSource): Promise<ArrayBuffer> {
+  return toArrayBuffer(ed25519.sign(asUint8Array(data), privateKey));
 }
 
 /**
  * Verify an Ed25519 signature.
  *
- * Returns a boolean rather than throwing on a bad signature, so callers decide
- * how to react. (Web Crypto's verify is already designed to run in roughly
- * constant time with respect to the signature contents.)
+ * Returns a boolean rather than throwing, so callers decide how to react; a
+ * malformed signature (e.g. wrong length) is treated as simply invalid.
  *
  * @param publicKey - The signer's Ed25519 public key
  * @param signature - The signature to check
@@ -71,14 +64,15 @@ export async function sign(privateKey: CryptoKey, data: BufferSource): Promise<A
  * @returns true iff the signature is valid for `data` under `publicKey`
  */
 export async function verify(
-  publicKey: CryptoKey,
+  publicKey: Uint8Array,
   signature: BufferSource,
   data: BufferSource
 ): Promise<boolean> {
-  if (!crypto?.subtle?.verify) {
-    throw new Error('Web Crypto API verify not available');
+  try {
+    return ed25519.verify(asUint8Array(signature), asUint8Array(data), publicKey);
+  } catch {
+    return false;
   }
-  return crypto.subtle.verify(ED25519_ALG, publicKey, signature, data);
 }
 
 /**
@@ -87,22 +81,22 @@ export async function verify(
  * @param publicKey - The public key to export
  * @returns 32 raw bytes
  */
-export async function exportSigningPublicKeyRaw(publicKey: CryptoKey): Promise<ArrayBuffer> {
-  if (!crypto?.subtle?.exportKey) {
-    throw new Error('Web Crypto API exportKey not available');
-  }
-  return crypto.subtle.exportKey('raw', publicKey);
+export async function exportSigningPublicKeyRaw(publicKey: Uint8Array): Promise<ArrayBuffer> {
+  return toArrayBuffer(publicKey);
 }
 
 /**
- * Import a raw 32-byte Ed25519 public key back into a CryptoKey.
+ * Import a raw 32-byte Ed25519 public key, validating its length.
  *
  * @param publicKeyRaw - Raw 32-byte Ed25519 public key
- * @returns The imported public CryptoKey (usable only for `verify`)
+ * @returns The public key as a `Uint8Array`
  */
-export async function importSigningPublicKeyRaw(publicKeyRaw: BufferSource): Promise<CryptoKey> {
-  if (!crypto?.subtle?.importKey) {
-    throw new Error('Web Crypto API importKey not available');
+export async function importSigningPublicKeyRaw(
+  publicKeyRaw: ArrayBuffer | Uint8Array
+): Promise<Uint8Array> {
+  const bytes = publicKeyRaw instanceof Uint8Array ? publicKeyRaw : new Uint8Array(publicKeyRaw);
+  if (bytes.byteLength !== 32) {
+    throw new Error('Invalid Ed25519 public key: expected 32 bytes.');
   }
-  return crypto.subtle.importKey('raw', publicKeyRaw, ED25519_ALG, true, ['verify']);
+  return bytes;
 }

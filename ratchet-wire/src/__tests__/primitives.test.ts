@@ -14,12 +14,12 @@ import {
 import { hkdf, DOMAIN_LABELS } from '../crypto/hkdf';
 
 describe('X25519 Key Exchange', () => {
-  it('should generate a valid key pair', async () => {
+  it('should generate a valid key pair (32-byte public and private keys)', async () => {
     const keyPair = await generateKeyPair();
-    expect(keyPair.publicKey).toBeDefined();
-    expect(keyPair.privateKey).toBeDefined();
-    expect(keyPair.publicKey.type).toBe('public');
-    expect(keyPair.privateKey.type).toBe('private');
+    expect(keyPair.publicKey).toBeInstanceOf(Uint8Array);
+    expect(keyPair.privateKey).toBeInstanceOf(Uint8Array);
+    expect(keyPair.publicKey.byteLength).toBe(32);
+    expect(keyPair.privateKey.byteLength).toBe(32);
   });
 
   it('should derive matching shared secrets between Alice and Bob', async () => {

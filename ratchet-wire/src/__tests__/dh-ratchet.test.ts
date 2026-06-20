@@ -9,7 +9,7 @@ import { kdfRk } from '../crypto/hkdf';
 import { toHex } from './session-helper';
 
 /** Build a minimal ratchet state with a fresh copy of the given root key. */
-function stateWith(rootByte: number, myDHKeyPair: KeyPair, theirDHPublicKey: CryptoKey): RatchetState {
+function stateWith(rootByte: number, myDHKeyPair: KeyPair, theirDHPublicKey: Uint8Array): RatchetState {
   return {
     rootKey: new Uint8Array(32).fill(rootByte).buffer,
     myDHKeyPair,

@@ -77,11 +77,18 @@ The Double Ratchet combines:
 
 | Operation | Implementation | Standard |
 |-----------|----------------|----------|
-| Key Exchange | X25519 via Web Crypto | RFC 7748 |
+| Key Exchange | X25519 via [@noble/curves](https://github.com/paulmillr/noble-curves) | RFC 7748 |
+| Identity Signatures | Ed25519 via @noble/curves | RFC 8032 |
 | Key Derivation | HKDF-SHA256 via Web Crypto | RFC 5869 |
 | Message Encryption | AES-256-GCM via Web Crypto | NIST |
-| Identity Signatures | Ed25519 via Web Crypto | RFC 8032 |
 | Session Init | Authenticated X3DH | Signal X3DH Spec |
+
+> **Why `@noble/curves` for the curves?** Browser Web Crypto only gained X25519
+> (Chrome 133, 2025) and Ed25519 (Chrome 137, 2025) very recently, so relying on
+> it makes the demo fail to load on common, slightly-older browsers. The audited,
+> pure-JS `@noble/curves` runs identically everywhere — and identically in Node,
+> so the test suite exercises the exact code path the browser does. HKDF-SHA256
+> and AES-256-GCM stay on Web Crypto, which every browser has supported for years.
 
 ## Architecture
 

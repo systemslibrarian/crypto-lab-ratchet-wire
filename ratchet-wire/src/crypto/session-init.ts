@@ -61,12 +61,12 @@ export interface BobPreSessionKeys {
  * it was not substituted in transit.
  */
 export interface BobPrekeyBundle {
-  identityKey: CryptoKey;
-  identitySigningKey: CryptoKey;
-  signedPreKey: CryptoKey;
+  identityKey: Uint8Array;
+  identitySigningKey: Uint8Array;
+  signedPreKey: Uint8Array;
   /** Ed25519 signature over the raw bytes of `signedPreKey`. */
   signedPreKeySignature: ArrayBuffer;
-  oneTimePreKey: CryptoKey;
+  oneTimePreKey: Uint8Array;
 }
 
 /** Result of X3DH key agreement: the shared root key (SK). */
@@ -158,8 +158,8 @@ export async function initiateSessionX3DH(
  */
 export async function acceptSessionX3DH(
   bobKeys: BobPreSessionKeys,
-  alicePublicIK: CryptoKey,
-  alicePublicEK: CryptoKey
+  alicePublicIK: Uint8Array,
+  alicePublicEK: Uint8Array
 ): Promise<SessionInitResult> {
   const dh1 = await deriveSharedSecret(bobKeys.signedPreKeyPair.privateKey, alicePublicIK);
   const dh2 = await deriveSharedSecret(bobKeys.identityKeyPair.privateKey, alicePublicEK);
@@ -188,7 +188,7 @@ export async function acceptSessionX3DH(
 export async function createAliceRatchetState(
   session: SessionInitResult,
   aliceRatchetKeyPair: KeyPair,
-  bobSignedPreKeyPublic: CryptoKey
+  bobSignedPreKeyPublic: Uint8Array
 ): Promise<RatchetState> {
   const dh = await deriveSharedSecret(aliceRatchetKeyPair.privateKey, bobSignedPreKeyPublic);
   const { rootKey, chainKey } = await kdfRk(session.rootKey, dh);
