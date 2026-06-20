@@ -218,6 +218,25 @@ describe('App integration (DOM smoke test)', () => {
     expect(document.querySelectorAll('#fs-table .fs-row.exposed').length).toBe(5);
   });
 
+  it('Restart returns the demo to the beginning', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    // Move the guide forward and send a message.
+    (document.getElementById('guide-next') as HTMLButtonElement).click();
+    (document.getElementById('sample-btn') as HTMLButtonElement).click();
+    await waitFor(() => !!document.querySelector('#messages .message-bubble'));
+    expect(document.getElementById('coach')!.hidden).toBe(false);
+
+    // Restart.
+    (document.getElementById('reset-btn') as HTMLButtonElement).click();
+    await waitFor(() => document.querySelectorAll('#messages .message-bubble').length === 0);
+
+    expect((document.getElementById('intro-cta') as HTMLElement).hidden).toBe(false);
+    expect(document.getElementById('coach')!.hidden).toBe(true);
+    expect(document.getElementById('guide-step')!.textContent).toBe('Step 1 of 7');
+  });
+
   it('demonstrates the MITM defense: a tampered pre-key is blocked', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();

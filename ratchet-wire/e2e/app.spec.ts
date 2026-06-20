@@ -95,6 +95,18 @@ test('out-of-order demo stores skipped keys then drains them', async ({ page }) 
   await expect(page.locator('#ooo-store-keys .ooo-key-chip')).toHaveText(['m1']);
 });
 
+test('Restart clears the conversation and resets the tour', async ({ page }) => {
+  await page.getByRole('button', { name: /Send a sample message/i }).click();
+  await expect(page.locator('#messages .message-bubble')).toHaveCount(1);
+
+  await page.click('#guide-next'); // move the tour off step 1
+  await page.click('#reset-btn');
+
+  await expect(page.locator('#messages .message-bubble')).toHaveCount(0);
+  await expect(page.locator('#intro-cta')).toBeVisible();
+  await expect(page.locator('#guide-step')).toHaveText('Step 1 of 7');
+});
+
 test('the MITM demo rejects a tampered pre-key', async ({ page }) => {
   await page.getByRole('button', { name: /Simulate a tampered pre-key/i }).click();
   await expect(page.locator('#mitm-result')).toContainText(/Blocked/i);

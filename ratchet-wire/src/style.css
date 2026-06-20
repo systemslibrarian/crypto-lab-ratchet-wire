@@ -177,6 +177,31 @@ a:hover {
   opacity: 0.9;
 }
 
+.header-action {
+  position: absolute;
+  top: calc(1rem + var(--safe-top));
+  left: calc(1rem + var(--safe-left));
+  min-height: 2.6rem;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-light);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.header-action:hover {
+  color: var(--color-alice);
+  border-color: var(--color-text-secondary);
+}
+
 .theme-toggle {
   position: absolute;
   top: calc(1rem + var(--safe-top));
@@ -1000,6 +1025,10 @@ a:hover {
 }
 
 /* ---- First-run call-to-action ---- */
+.intro-cta[hidden] {
+  display: none;
+}
+
 .intro-cta {
   display: flex;
   flex-direction: column;
@@ -1609,6 +1638,14 @@ a:hover {
   .theme-toggle {
     top: calc(0.75rem + var(--safe-top));
     right: calc(0.75rem + var(--safe-right));
+  }
+
+  .header-action {
+    top: calc(0.75rem + var(--safe-top));
+    left: calc(0.75rem + var(--safe-left));
+    min-height: 2.2rem;
+    padding: 0 0.7rem;
+    font-size: 0.8rem;
   }
 
   .tab-content {

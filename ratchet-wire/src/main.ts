@@ -355,6 +355,10 @@ export class RatchetWireApp {
       this.renderOoo();
     });
 
+    document.getElementById('reset-btn')?.addEventListener('click', () => {
+      void this.resetDemo();
+    });
+
     document.getElementById('fs-run')?.addEventListener('click', () => {
       void this.runForwardSecrecy();
     });
@@ -441,6 +445,68 @@ export class RatchetWireApp {
 
     // Each step drives the relevant tab — this is the "link to the next part".
     this.switchTab(step.tab);
+  }
+
+  // --- Reset -----------------------------------------------------------------
+
+  /** Start the whole demo over: a fresh session, cleared UI, guide back to step 1. */
+  private async resetDemo() {
+    this.session = await buildSession();
+    this.conversation = [];
+    this.coachEvent = null;
+    this.seenRatchet = false;
+    this.seenSymmetric = false;
+    this.coachExploredSecurity = false;
+
+    // Sub-demos.
+    this.ooo = null;
+    this.oooLog = '';
+    this.fs = null;
+    this.recovery = null;
+    this.recoverySnapshotRoot = null;
+    this.recoveryPending = null;
+
+    // Composer + transient UI.
+    const coach = document.getElementById('coach');
+    if (coach) coach.hidden = true;
+    this.clearComposerHint();
+    this.messageInput.value = '';
+    const aliceRadio = document.querySelector(
+      'input[name="sender"][value="alice"]'
+    ) as HTMLInputElement | null;
+    if (aliceRadio) aliceRadio.checked = true;
+
+    // Re-render everything from the fresh state.
+    this.resetRecoveryUI();
+    this.renderOoo();
+    this.renderForwardSecrecy();
+    this.renderConversation();
+    this.renderHandshake();
+    this.renderX3DH();
+    this.updateStateDisplay();
+
+    // Bring the guided tour back to the start.
+    this.guideStep = 0;
+    this.guideHidden = false;
+    writeStored(GUIDE_HIDDEN_KEY, '0');
+    this.renderGuide();
+
+    this.announce('Demo reset — starting from the beginning.');
+  }
+
+  /** Restore the break-in-recovery simulation to its initial button/state. */
+  private resetRecoveryUI() {
+    const setDisabled = (id: string, disabled: boolean) => {
+      const el = document.getElementById(id) as HTMLButtonElement | null;
+      if (el) el.disabled = disabled;
+    };
+    setDisabled('compromise-btn', false);
+    setDisabled('recovery-send-btn', true);
+    setDisabled('recovery-complete-btn', true);
+    for (const id of ['compromise-status', 'recovery-status', 'recovery-complete-status']) {
+      const el = document.getElementById(id) as HTMLElement | null;
+      if (el) el.hidden = true;
+    }
   }
 
   /** Populate the X3DH handshake-breakdown tab from this session's derivation. */
@@ -716,7 +782,13 @@ export class RatchetWireApp {
   }
 
   private renderConversation() {
-    this.messagesContainer.innerHTML = '';
+    // Remove only message rows; keep the intro card in the DOM (so its Send-a-
+    // sample button stays wired) and just toggle it based on whether we have
+    // any messages yet. This is what lets Restart return to the intro cleanly.
+    this.messagesContainer.querySelectorAll('.message').forEach((el) => el.remove());
+    const intro = document.getElementById('intro-cta');
+    if (intro) (intro as HTMLElement).hidden = this.conversation.length > 0;
+
     for (const msg of this.conversation) {
       const div = document.createElement('div');
       div.className = `message ${msg.sender.toLowerCase()}`;
@@ -800,7 +872,11 @@ export class RatchetWireApp {
   private renderMkTimeline() {
     const el = document.getElementById('mk-timeline');
     if (!el) return;
-    if (!this.conversation.length) return; // keep the explanatory placeholder
+    if (!this.conversation.length) {
+      el.innerHTML =
+        '<p class="diagram-note">Send messages on the Conversation tab to watch each chain key (CK) derive a single message key (MK), which is used once and then deleted — that deletion is forward secrecy.</p>';
+      return;
+    }
 
     el.innerHTML = '';
     for (const msg of this.conversation) {
