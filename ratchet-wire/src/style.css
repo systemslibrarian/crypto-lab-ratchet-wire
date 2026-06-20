@@ -943,6 +943,46 @@ a:hover {
   overflow-x: auto;
 }
 
+/* ---- First-run call-to-action ---- */
+.intro-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: 30rem;
+  margin: auto;
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+}
+
+.intro-cta-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.intro-cta-body {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.intro-cta .btn {
+  margin-top: 0.25rem;
+}
+
+.intro-cta-next {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.state-panel-hint {
+  margin-bottom: 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
 /* ---- Educational disclaimer ---- */
 .edu-disclaimer {
   margin: 0 0 1.5rem;

@@ -109,6 +109,18 @@ describe('App integration (DOM smoke test)', () => {
     expect(breakdown.querySelector('.x3dh-sk')!.textContent).toContain('SK = HKDF');
   });
 
+  it('the sample button sends a first message in one click', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    // Intro CTA is visible before any message.
+    expect(document.getElementById('intro-cta')).not.toBeNull();
+
+    (document.getElementById('sample-btn') as HTMLButtonElement).click();
+    await waitFor(() => !!document.querySelector('#messages .message-bubble'));
+    expect(document.querySelector('#messages .message-bubble')!.textContent).toContain('Hi Bob');
+  });
+
   it('encrypts, delivers, and renders a sent message', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();

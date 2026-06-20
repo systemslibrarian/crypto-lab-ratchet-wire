@@ -254,6 +254,16 @@ export class RatchetWireApp {
       void this.sendMessage();
     });
 
+    // One-click sample to lower the activation energy for first-time visitors.
+    document.getElementById('sample-btn')?.addEventListener('click', () => {
+      const aliceRadio = document.querySelector(
+        'input[name="sender"][value="alice"]'
+      ) as HTMLInputElement | null;
+      if (aliceRadio) aliceRadio.checked = true;
+      this.messageInput.value = 'Hi Bob! 👋';
+      void this.sendMessage();
+    });
+
     this.tabButtons.forEach((btn) => {
       btn.addEventListener('click', () => this.switchTab(btn.dataset.tab!));
     });

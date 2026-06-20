@@ -160,7 +160,22 @@
                   aria-label="Conversation messages"
                   tabindex="0"
                 >
-                  <p class="empty-state">Send a message to begin the conversation.</p>
+                  <div class="intro-cta" id="intro-cta">
+                    <p class="intro-cta-title">
+                      <span aria-hidden="true">👋 </span>A live, end-to-end-encrypted chat between Alice and Bob
+                    </p>
+                    <p class="intro-cta-body">
+                      Type anything below and press <strong>Send</strong> — the message is really
+                      encrypted and decrypted with the Double Ratchet. Then watch the keys in the
+                      <strong>Key State</strong> panel change with every message you send.
+                    </p>
+                    <button type="button" id="sample-btn" class="btn btn-primary">
+                      <span aria-hidden="true">✨ </span>Send a sample message
+                    </button>
+                    <p class="intro-cta-next">
+                      New to this? Follow the <strong>suggested path</strong> at the top of this tab.
+                    </p>
+                  </div>
                 </div>
                 <form class="input-controls" id="message-form" aria-label="Send a message">
                   <fieldset class="sender-selector">
@@ -192,6 +207,7 @@
 
               <aside class="state-panel" aria-label="Live key state">
                 <h3>Key State</h3>
+                <p class="state-panel-hint">Updates live as you send. The root key changes on a DH ratchet; the chain key advances every message.</p>
                 <div class="key-state" aria-live="polite" aria-atomic="true">
                   <div class="party-state alice">
                     <h4>Alice</h4>
