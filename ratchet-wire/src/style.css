@@ -943,6 +943,61 @@ a:hover {
   overflow-x: auto;
 }
 
+/* ---- Learning-path signpost ---- */
+.learn-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.85rem;
+  background-color: color-mix(in srgb, var(--color-alice) 8%, transparent);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-alice);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.learn-path[hidden] {
+  display: none;
+}
+
+.learn-path-label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.learn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-alice);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.learn-link:hover {
+  color: var(--color-text);
+}
+
+.learn-path-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.learn-path-dismiss:hover {
+  color: var(--color-text);
+}
+
 /* ---- Authenticated-handshake banner ---- */
 .handshake-banner {
   display: flex;

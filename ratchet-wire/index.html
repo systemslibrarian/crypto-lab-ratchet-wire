@@ -122,6 +122,21 @@
             aria-labelledby="tab-conversation"
             tabindex="0"
           >
+            <p class="learn-path" id="learn-path" role="note">
+              <span class="learn-path-label">New here?</span>
+              <span>Suggested path:</span>
+              <button type="button" class="learn-link" data-goto="x3dh">① X3DH Handshake</button>
+              <span aria-hidden="true">→</span>
+              <span>② send a message below</span>
+              <span aria-hidden="true">→</span>
+              <button type="button" class="learn-link" data-goto="state">③ Ratchet State</button>
+              <span aria-hidden="true">→</span>
+              <button type="button" class="learn-link" data-goto="fs">④ Forward Secrecy</button>
+              <span aria-hidden="true">/</span>
+              <button type="button" class="learn-link" data-goto="compromise">Break-In Recovery</button>
+              <button type="button" class="learn-path-dismiss" id="learn-path-dismiss" aria-label="Dismiss this hint">×</button>
+            </p>
+
             <section class="handshake-banner" aria-label="Session handshake status">
               <div class="handshake-headline">
                 <span class="handshake-badge" id="handshake-badge">🔒 Identity verified</span>

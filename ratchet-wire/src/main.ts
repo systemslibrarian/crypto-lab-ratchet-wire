@@ -104,6 +104,23 @@ interface Session {
 type ThemeMode = 'dark' | 'light';
 
 const THEME_STORAGE_KEY = 'theme';
+const LEARN_PATH_KEY = 'learnPathDismissed';
+
+/** localStorage reads/writes that never throw (private mode, embedded webviews, etc.). */
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeStored(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
 
 function getThemeMode(): ThemeMode {
   return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
@@ -227,7 +244,7 @@ export class RatchetWireApp {
     this.themeToggleButton.addEventListener('click', () => {
       const nextTheme: ThemeMode = getThemeMode() === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', nextTheme);
-      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      writeStored(THEME_STORAGE_KEY, nextTheme);
       syncThemeToggle(this.themeToggleButton);
     });
 
@@ -285,9 +302,30 @@ export class RatchetWireApp {
       void this.recoveryBobReceives();
     });
 
+    this.setupLearnPath();
     this.renderHandshake();
     this.renderX3DH();
     this.renderRatchetViz();
+  }
+
+  /**
+   * Wire the dismissible "suggested path" signpost: its links jump to the
+   * relevant tab, and dismissing it is remembered so it never nags on return.
+   */
+  private setupLearnPath() {
+    const learnPath = document.getElementById('learn-path');
+    if (!learnPath) return;
+
+    if (readStored(LEARN_PATH_KEY) === '1') {
+      learnPath.hidden = true;
+    }
+    learnPath.querySelectorAll<HTMLButtonElement>('.learn-link').forEach((link) => {
+      link.addEventListener('click', () => this.switchTab(link.dataset.goto!));
+    });
+    document.getElementById('learn-path-dismiss')?.addEventListener('click', () => {
+      learnPath.hidden = true;
+      writeStored(LEARN_PATH_KEY, '1');
+    });
   }
 
   /** Populate the X3DH handshake-breakdown tab from this session's derivation. */

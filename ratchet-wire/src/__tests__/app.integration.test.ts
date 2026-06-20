@@ -23,6 +23,21 @@ if (!globalThis.crypto?.subtle) {
   Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 }
 
+// This happy-dom build doesn't expose localStorage; provide a minimal one so the
+// app's theme/learning-path persistence behaves as it would in a browser.
+if (!globalThis.localStorage) {
+  const store = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+      setItem: (k: string, v: string) => void store.set(k, String(v)),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    },
+    configurable: true,
+  });
+}
+
 const here = dirname(fileURLToPath(import.meta.url));
 const indexHtml = readFileSync(resolve(here, '../../index.html'), 'utf8');
 const bodyInner = (indexHtml.match(/<body>([\s\S]*?)<\/body>/)?.[1] ?? '')
@@ -39,8 +54,27 @@ async function waitFor(predicate: () => boolean, timeoutMs = 4000): Promise<void
 
 describe('App integration (DOM smoke test)', () => {
   beforeEach(() => {
+    localStorage.removeItem('learnPathDismissed');
     document.documentElement.setAttribute('data-theme', 'dark');
     document.body.innerHTML = bodyInner;
+  });
+
+  it('shows a dismissible learning-path signpost whose links switch tabs', async () => {
+    localStorage.removeItem('learnPathDismissed');
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    const path = document.getElementById('learn-path') as HTMLParagraphElement;
+    expect(path.hidden).toBe(false);
+
+    // A path link jumps to the corresponding tab.
+    path.querySelector<HTMLButtonElement>('.learn-link[data-goto="x3dh"]')!.click();
+    expect(document.getElementById('tab-x3dh')!.getAttribute('aria-selected')).toBe('true');
+
+    // Dismissing hides it and is remembered.
+    (document.getElementById('learn-path-dismiss') as HTMLButtonElement).click();
+    expect(path.hidden).toBe(true);
+    expect(localStorage.getItem('learnPathDismissed')).toBe('1');
   });
 
   it('boots, shows a verified handshake with a fingerprint', async () => {
