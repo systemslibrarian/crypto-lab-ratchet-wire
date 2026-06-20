@@ -122,6 +122,28 @@ describe('App integration (DOM smoke test)', () => {
     expect(document.querySelector('#ooo-store-keys .ooo-key-chip')!.textContent).toBe('m1');
   });
 
+  it('forward-secrecy demo: a stolen chain key exposes future messages, not past ones', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    (document.getElementById('fs-run') as HTMLButtonElement).click();
+    await waitFor(() => document.querySelectorAll('#fs-table .fs-row').length === 6);
+
+    // Default compromise point is 3: m0–m2 safe, m3–m5 exposed.
+    const rows = Array.from(document.querySelectorAll('#fs-table .fs-row'));
+    expect(rows.filter((r) => r.classList.contains('safe')).length).toBe(3);
+    expect(rows.filter((r) => r.classList.contains('exposed')).length).toBe(3);
+    expect(document.querySelector('#fs-table .fs-steal')).not.toBeNull();
+
+    // Move the compromise point to 1 → only m0 stays safe.
+    const points = document.querySelectorAll<HTMLButtonElement>('#fs-compromise .fs-point');
+    points[1].click();
+    await waitFor(
+      () => document.querySelectorAll('#fs-table .fs-row.safe').length === 1
+    );
+    expect(document.querySelectorAll('#fs-table .fs-row.exposed').length).toBe(5);
+  });
+
   it('demonstrates the MITM defense: a tampered pre-key is blocked', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();

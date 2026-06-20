@@ -23,6 +23,9 @@ Ratchet Wire demonstrates:
   *"Simulate a tampered pre-key"* showing the man-in-the-middle defense reject it.
 - **Out of Order** — deliver a batch of messages in any order and watch Bob's
   skipped-key store fill and drain.
+- **Forward Secrecy** — steal Alice's chain key at any point and see the one-way
+  ratchet expose every *future* message key while leaving *past* ones
+  unrecoverable.
 - **Break-In Recovery** — compromise Bob's keys, then watch a DH ratchet lock the
   attacker out.
 

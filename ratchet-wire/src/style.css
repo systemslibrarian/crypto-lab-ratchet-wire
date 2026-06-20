@@ -541,6 +541,131 @@ a:hover {
   color: var(--color-text);
 }
 
+/* ---- Forward-secrecy attacker demo ---- */
+.fs-panel {
+  background-color: var(--color-bg-light);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.fs-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.fs-compromise {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.fs-control-label {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  margin-right: 0.25rem;
+}
+
+.fs-point {
+  min-width: 2.1rem;
+  min-height: 2.1rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.fs-point:hover:not(.active) {
+  border-color: var(--color-focus);
+  color: var(--color-text);
+}
+
+.fs-point.active {
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-on-alice);
+  font-weight: 700;
+}
+
+.fs-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.fs-steal {
+  padding: 0.4rem 0.75rem;
+  margin: 0.25rem 0;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--color-danger) 14%, transparent);
+  border: 1px dashed var(--color-danger);
+  color: var(--color-danger);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.fs-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.85rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.fs-row.safe {
+  border-left: 3px solid var(--color-success);
+}
+
+.fs-row.exposed {
+  border-left: 3px solid var(--color-danger);
+  background-color: color-mix(in srgb, var(--color-danger) 7%, transparent);
+}
+
+.fs-msg {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  min-width: 2.5rem;
+  color: var(--color-text-secondary);
+}
+
+.fs-mk {
+  flex: 1;
+  min-width: 12rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}
+
+.fs-verdict {
+  font-size: 0.78rem;
+}
+
+.fs-row.safe .fs-verdict {
+  color: var(--color-success);
+}
+
+.fs-row.exposed .fs-verdict {
+  color: var(--color-danger);
+}
+
+.fs-summary {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
 /* ---- Live message-key timeline ---- */
 .mk-timeline {
   display: flex;

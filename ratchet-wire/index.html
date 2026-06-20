@@ -79,6 +79,17 @@
             </button>
             <button
               class="tab-btn"
+              data-tab="fs"
+              role="tab"
+              id="tab-fs"
+              aria-selected="false"
+              aria-controls="fs"
+              tabindex="-1"
+            >
+              Forward Secrecy
+            </button>
+            <button
+              class="tab-btn"
               data-tab="compromise"
               role="tab"
               id="tab-compromise"
@@ -374,6 +385,38 @@
                   </div>
                 </dl>
               </section>
+            </div>
+          </div>
+
+          <!-- Tab: Forward Secrecy attacker demo -->
+          <div
+            id="fs"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="tab-fs"
+            tabindex="0"
+            hidden
+          >
+            <div class="fs-panel">
+              <h3>Forward Secrecy — Why Past Messages Stay Safe</h3>
+              <p class="panel-desc">
+                The symmetric ratchet's chain key only moves forward:
+                <code>CK[n] → CK[n+1]</code> through a one-way KDF that cannot be reversed. So an
+                attacker who steals Alice's <em>current</em> chain key can read messages from that
+                point onward — but the keys for earlier messages came from chain keys that no longer
+                exist and were deleted the instant they were used. They are unrecoverable. Move the
+                compromise point and watch what the attacker can and cannot reach.
+              </p>
+
+              <div class="fs-controls">
+                <button id="fs-run" type="button" class="btn btn-primary">Run demo</button>
+                <div id="fs-compromise" class="fs-compromise" role="group" aria-label="Compromise point"></div>
+              </div>
+
+              <div id="fs-table" class="fs-table">
+                <p class="empty-state">Run the demo to derive a chain of message keys.</p>
+              </div>
+              <p id="fs-summary" class="fs-summary" role="status"></p>
             </div>
           </div>
 

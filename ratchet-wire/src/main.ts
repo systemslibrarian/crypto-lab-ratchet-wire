@@ -6,6 +6,7 @@
 import './style.css';
 import { RatchetState } from './crypto/dh-ratchet';
 import { encrypt, decrypt, Message, SkippedKeys } from './crypto/double-ratchet';
+import { ratchetStep, ChainState } from './crypto/symmetric-ratchet';
 import { generateKeyPair } from './crypto/x25519';
 import { generateSigningKeyPair } from './crypto/ed25519';
 import {
@@ -50,6 +51,23 @@ function skippedNumbers(skipped: SkippedKeys): number[] {
     .map((k) => Number(k.slice(k.lastIndexOf(':') + 1)))
     .filter((n) => Number.isFinite(n))
     .sort((a, b) => a - b);
+}
+
+/**
+ * Walk a symmetric (chain-key) ratchet forward `count` steps from `chainKey0`,
+ * returning each step's message-key fingerprint. This is exactly the operation
+ * an attacker performs after stealing a chain key — and it only ever runs
+ * forward, which is what makes earlier keys unrecoverable.
+ */
+async function chainMessageKeyFps(chainKey0: ArrayBuffer, count: number): Promise<string[]> {
+  let chain: ChainState = { chainKey: chainKey0, messageNumber: 0 };
+  const fps: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const { newState, messageKey } = await ratchetStep(chain);
+    fps.push(hex(messageKey.key));
+    chain = newState;
+  }
+  return fps;
 }
 
 /** Extract the teaching-relevant wire fields from an encrypted message. */
@@ -178,6 +196,10 @@ export class RatchetWireApp {
   } | null = null;
   private oooLog = '';
 
+  // Forward-secrecy attacker demo.
+  private static readonly FS_COUNT = 6;
+  private fs: { messageKeyFps: string[]; compromiseAt: number } | null = null;
+
   // UI elements.
   private messagesContainer!: HTMLDivElement;
   private messageInput!: HTMLInputElement;
@@ -247,6 +269,10 @@ export class RatchetWireApp {
       this.ooo = null;
       this.oooLog = '';
       this.renderOoo();
+    });
+
+    document.getElementById('fs-run')?.addEventListener('click', () => {
+      void this.runForwardSecrecy();
     });
 
     document.getElementById('compromise-btn')?.addEventListener('click', () => {
@@ -709,6 +735,106 @@ export class RatchetWireApp {
       keysEl.appendChild(chip);
     }
     logEl.textContent = this.oooLog;
+  }
+
+  // --- Forward-secrecy attacker demo -----------------------------------------
+
+  /** Derive a real chain of message keys, then visualize what a stolen chain key exposes. */
+  private async runForwardSecrecy() {
+    const session = await buildSession();
+    // Use Alice's real initial sending chain key as CK[0].
+    const messageKeyFps = await chainMessageKeyFps(
+      session.alice.sendingChain!.chainKey,
+      RatchetWireApp.FS_COUNT
+    );
+    this.fs = { messageKeyFps, compromiseAt: 3 };
+    this.renderForwardSecrecy();
+  }
+
+  /**
+   * Render the forward-secrecy table. Messages before the compromise point are
+   * unrecoverable (their chain keys are gone and the KDF can't run backward);
+   * messages from the compromise point onward are exposed, because the attacker
+   * forward-ratchets the stolen chain key to reproduce exactly those keys —
+   * until a DH ratchet replaces the chain key.
+   */
+  private renderForwardSecrecy() {
+    const controls = document.getElementById('fs-compromise');
+    const table = document.getElementById('fs-table');
+    const summary = document.getElementById('fs-summary');
+    if (!controls || !table || !summary) return;
+
+    if (!this.fs) {
+      controls.innerHTML = '';
+      table.innerHTML = '<p class="empty-state">Run the demo to derive a chain of message keys.</p>';
+      summary.textContent = '';
+      return;
+    }
+    const { messageKeyFps, compromiseAt } = this.fs;
+    const count = messageKeyFps.length;
+
+    // Compromise-point selector (0 = steal before any send, count = steal after all).
+    controls.innerHTML = '';
+    const labelText = document.createElement('span');
+    labelText.className = 'fs-control-label';
+    labelText.textContent = 'Attacker steals the chain key after Alice has sent:';
+    controls.appendChild(labelText);
+    for (let k = 0; k <= count; k++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `fs-point${k === compromiseAt ? ' active' : ''}`;
+      btn.textContent = String(k);
+      btn.setAttribute('aria-pressed', String(k === compromiseAt));
+      btn.addEventListener('click', () => {
+        if (this.fs) this.fs.compromiseAt = k;
+        this.renderForwardSecrecy();
+      });
+      controls.appendChild(btn);
+    }
+
+    // Per-message rows, with the "steal" marker inserted at the compromise point.
+    table.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+      if (i === compromiseAt) table.appendChild(this.fsStealMarker(compromiseAt));
+
+      const exposed = i >= compromiseAt;
+      const row = document.createElement('div');
+      row.className = `fs-row ${exposed ? 'exposed' : 'safe'}`;
+
+      const msg = document.createElement('span');
+      msg.className = 'fs-msg';
+      msg.textContent = `m${i}`;
+
+      const mk = document.createElement('code');
+      mk.className = 'fs-mk';
+      mk.textContent = exposed ? `MK[${i}] ${messageKeyFps[i]}` : `MK[${i}] — used once, deleted`;
+
+      const verdict = document.createElement('span');
+      verdict.className = 'fs-verdict';
+      verdict.textContent = exposed
+        ? `⚠ exposed — attacker derives ${messageKeyFps[i]}`
+        : '🔒 safe — cannot derive (one-way KDF, chain key gone)';
+
+      row.append(msg, mk, verdict);
+      table.appendChild(row);
+    }
+    if (compromiseAt === count) table.appendChild(this.fsStealMarker(compromiseAt));
+
+    const exposedCount = count - compromiseAt;
+    const safeCount = compromiseAt;
+    summary.textContent =
+      `Stealing the chain key after ${compromiseAt} message${compromiseAt === 1 ? '' : 's'} exposes ` +
+      `${exposedCount} future message${exposedCount === 1 ? '' : 's'} (m${compromiseAt}+) and leaves ` +
+      `${safeCount} past message${safeCount === 1 ? '' : 's'} secret. ` +
+      'A DH ratchet would replace the chain key and end the exposure — that is break-in recovery.';
+  }
+
+  /** The "attacker steals CK[n]" divider row. */
+  private fsStealMarker(n: number): HTMLDivElement {
+    const marker = document.createElement('div');
+    marker.className = 'fs-steal';
+    marker.textContent = `🦹 Attacker steals Alice's current chain key CK[${n}]`;
+    return marker;
   }
 
   // --- Break-in recovery simulation -----------------------------------------

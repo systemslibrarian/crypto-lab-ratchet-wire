@@ -92,6 +92,40 @@ describe('Symmetric-Key Ratchet (Message Keys)', () => {
     expect(messageKeyArray).not.toEqual(nextChainKeyArray);
   });
 
+  it('FORWARD SECRECY: a stolen chain key derives future keys but never past ones', async () => {
+    // Build a full chain, recording each message key. Then "steal" the chain key
+    // at step n and forward-ratchet from it; it must reproduce keys n, n+1, …
+    // and must NOT be able to produce any earlier key (the KDF is one-way).
+    const initial = new Uint8Array(32).fill(0x42).buffer;
+    const N = 6;
+    const n = 3; // compromise point
+
+    const messageKeys: string[] = [];
+    const chainKeys: ArrayBuffer[] = [];
+    let state: ChainState = { chainKey: initial, messageNumber: 0 };
+    for (let i = 0; i < N; i++) {
+      chainKeys.push(state.chainKey); // CK[i], produces MK[i]
+      const { newState, messageKey } = await ratchetStep(state);
+      messageKeys.push(Array.from(new Uint8Array(messageKey.key)).join(','));
+      state = newState;
+    }
+
+    // Attacker holds CK[n]; forward-ratchet it.
+    const recovered: string[] = [];
+    let attacker: ChainState = { chainKey: chainKeys[n], messageNumber: n };
+    for (let i = n; i < N; i++) {
+      const { newState, messageKey } = await ratchetStep(attacker);
+      recovered.push(Array.from(new Uint8Array(messageKey.key)).join(','));
+      attacker = newState;
+    }
+
+    // Future keys are fully reproduced…
+    expect(recovered).toEqual(messageKeys.slice(n));
+    // …and none of the past keys appear among what the attacker can derive.
+    const past = new Set(messageKeys.slice(0, n));
+    for (const r of recovered) expect(past.has(r)).toBe(false);
+  });
+
   it('should correctly track message numbers', async () => {
     const initialChainKey = new Uint8Array(32).fill(0xdd).buffer;
     let state: ChainState = {
