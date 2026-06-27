@@ -27,7 +27,10 @@ for (const theme of ['dark', 'light'] as const) {
     await page.addStyleTag({
       content: '*,*::before,*::after{animation:none!important;transition:none!important}',
     });
-    if (theme === 'light') await page.click('#theme-toggle');
+    // The shared crypto-lab header hides the lab's #theme-toggle and exposes its
+    // own #cl-theme-toggle; both drive documentElement[data-theme]. Click the
+    // visible header control so this doesn't hang on a hidden element.
+    if (theme === 'light') await page.click('#cl-theme-toggle');
 
     // Populate the data-driven demos so axe sees their rendered output.
     await page.getByRole('button', { name: /Send a sample message/i }).click();
