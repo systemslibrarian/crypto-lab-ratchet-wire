@@ -28,6 +28,10 @@ interface ConversationMessage {
   chainKeyFp: string;
   /** Sending-chain generation (sender's DH-ratchet count) when this was sent. */
   chainGen: number;
+  /** True if receiving this message made the receiver perform a DH ratchet. */
+  ratcheted: boolean;
+  /** Receiver's root-key fingerprint after this delivery (changes on a ratchet). */
+  rootKeyFp: string;
   /** The on-the-wire header/IV, surfaced in the per-message inspector. */
   wire: {
     /** Sender's current ratchet public key (header.dhPublicKey), shortened. */
@@ -147,7 +151,109 @@ const GUIDE_STEPS: GuideStep[] = [
   {
     title: 'Step 6 — Explore on your own',
     tab: 'conversation',
-    text: 'That’s the Double Ratchet! Two more tabs to try: “Out of Order” (deliver messages in any order and watch the skipped-key store) and “Break-In Recovery” (compromise Bob, then lock the attacker out). Press Finish to hide this guide — you can reopen it any time.',
+    text: 'That’s the Double Ratchet! Still to try: “Out of Order” (deliver messages in any order and watch the skipped-key store), “Break-In Recovery” (compromise Bob, then lock the attacker out), and “Test Yourself” (a quick quiz on everything you just saw). Press Finish to hide this guide — you can reopen it any time.',
+  },
+];
+
+/** One multiple-choice question in the Test Yourself tab. */
+interface QuizQuestion {
+  question: string;
+  options: string[];
+  /** Index into `options` of the correct answer. */
+  answer: number;
+  /** Shown after answering — explains why, and points back at the live demo. */
+  explain: string;
+}
+
+const QUIZ_QUESTIONS: QuizQuestion[] = [
+  {
+    question:
+      "An attacker steals Alice's current chain key CK. Which messages can they read?",
+    options: [
+      'All past and future messages',
+      'Only past messages',
+      'Messages from that point on — until the next DH ratchet',
+      'Nothing: the chain key alone is useless',
+    ],
+    answer: 2,
+    explain:
+      'The chain key only runs forward through a one-way KDF, so past message keys are unrecoverable — and the next DH ratchet replaces the chain entirely. Try it on the Forward Secrecy tab.',
+  },
+  {
+    question: 'What triggers a DH ratchet step?',
+    options: [
+      'Every single message',
+      'The conversation changing direction (a message carrying a new ratchet public key)',
+      'A timer that rotates keys every few minutes',
+      'The user manually rotating keys',
+    ],
+    answer: 1,
+    explain:
+      "When the sender's ratchet public key in the header is new, the receiver mixes it with the root key to derive fresh chains. Watch the Root Key change when Bob replies to Alice.",
+  },
+  {
+    question:
+      'Why can an attacker holding CK[5] not compute the key for message 3?',
+    options: [
+      'Message 3 used a different cipher',
+      'CK[3] → CK[4] → CK[5] runs through a one-way KDF, and the old keys were deleted',
+      'Message keys are stored on a separate server',
+      'They can — nothing prevents it',
+    ],
+    answer: 1,
+    explain:
+      'That is forward secrecy: HKDF cannot be run backwards, and each message key is deleted right after use. The Ratchet State tab shows every key being derived and destroyed.',
+  },
+  {
+    question: "What attack does Bob's signed pre-key signature prevent?",
+    options: [
+      'A man-in-the-middle swapping the pre-key during session setup',
+      'An attacker flooding Bob with messages',
+      'Replay of old messages',
+      'Brute-forcing the root key',
+    ],
+    answer: 0,
+    explain:
+      "Alice verifies the pre-key against Bob's long-term Ed25519 identity before deriving anything. Press “Simulate a tampered pre-key” on the Conversation tab to watch the rejection.",
+  },
+  {
+    question:
+      'Message m3 arrives before m1 and m2. How does the receiver decrypt m1 when it finally shows up?',
+    options: [
+      'It asks the sender to re-encrypt m1',
+      'It rewinds the chain key two steps',
+      'It derived and stored the keys for m1 and m2 when m3 arrived, and uses the stored key',
+      'It cannot — out-of-order messages are lost',
+    ],
+    answer: 2,
+    explain:
+      'While skipping ahead to m3, the receiver derives MK[1] and MK[2] and stores them for later. The Out of Order tab lets you deliver messages in any order and watch the store fill and drain.',
+  },
+  {
+    question:
+      'Why does the receiver refuse to skip more than MAX_SKIP message keys at once?',
+    options: [
+      'The Map data structure has a hard size limit',
+      'Skipping more would break forward secrecy',
+      'The header is not yet authenticated — a forged huge counter would force enormous KDF work (denial of service)',
+      'Old keys expire after an hour',
+    ],
+    answer: 2,
+    explain:
+      'AEAD verification only happens once the target key is derived, so a forged messageNumber of one billion would hang the receiver in KDF loops first. The bound fails fast instead.',
+  },
+  {
+    question:
+      "An attacker has fully compromised Bob's ratchet state. When are new messages safe again?",
+    options: [
+      'Immediately — each message key is unique',
+      'After the next DH ratchet completes, deriving a root key from fresh key pairs',
+      'Never — a compromise is permanent',
+      'After Bob restarts the app',
+    ],
+    answer: 1,
+    explain:
+      'That is break-in recovery: the next direction change mixes in brand-new X25519 keys the attacker does not hold. Step through it on the Break-In Recovery tab.',
   },
 ];
 
@@ -274,6 +380,9 @@ export class RatchetWireApp {
   private static readonly FS_COUNT = 6;
   private fs: { messageKeyFps: string[]; compromiseAt: number } | null = null;
 
+  // Test Yourself quiz: the chosen option index per question (null = unanswered).
+  private quizAnswers: (number | null)[] = QUIZ_QUESTIONS.map(() => null);
+
   // UI elements.
   private messagesContainer!: HTMLDivElement;
   private messageInput!: HTMLInputElement;
@@ -373,10 +482,16 @@ export class RatchetWireApp {
       void this.recoveryBobReceives();
     });
 
+    document.getElementById('quiz-retry')?.addEventListener('click', () => {
+      this.quizAnswers = QUIZ_QUESTIONS.map(() => null);
+      this.renderQuiz();
+    });
+
     this.setupGuide();
     this.renderHandshake();
     this.renderX3DH();
     this.renderRatchetViz();
+    this.renderQuiz();
   }
 
   // --- Guided tour -----------------------------------------------------------
@@ -465,6 +580,7 @@ export class RatchetWireApp {
     this.recovery = null;
     this.recoverySnapshotRoot = null;
     this.recoveryPending = null;
+    this.quizAnswers = QUIZ_QUESTIONS.map(() => null);
 
     // Composer + transient UI.
     const coach = document.getElementById('coach');
@@ -483,6 +599,7 @@ export class RatchetWireApp {
     this.renderConversation();
     this.renderHandshake();
     this.renderX3DH();
+    this.renderQuiz();
     this.updateStateDisplay();
 
     // Bring the guided tour back to the start.
@@ -678,11 +795,20 @@ export class RatchetWireApp {
       const r = await decrypt(s.bob, message, s.bobSkipped);
       s.bob = r.newState;
       s.bobSkipped = r.skippedKeys;
-      this.conversation.push({ sender: 'Alice', text: r.plaintext, chainKeyFp, chainGen, wire: wireInfo(message) });
+      const ratcheted = s.bob.dhRatchetCount > receiverDhBefore;
+      this.conversation.push({
+        sender: 'Alice',
+        text: r.plaintext,
+        chainKeyFp,
+        chainGen,
+        ratcheted,
+        rootKeyFp: hex(s.bob.rootKey),
+        wire: wireInfo(message),
+      });
       this.coachEvent = {
         sender: 'Alice',
         receiver: 'Bob',
-        ratcheted: s.bob.dhRatchetCount > receiverDhBefore,
+        ratcheted,
         messageNumber: message.header.messageNumber,
         receiverDhCount: s.bob.dhRatchetCount,
       };
@@ -695,11 +821,20 @@ export class RatchetWireApp {
       const r = await decrypt(s.alice, message, s.aliceSkipped);
       s.alice = r.newState;
       s.aliceSkipped = r.skippedKeys;
-      this.conversation.push({ sender: 'Bob', text: r.plaintext, chainKeyFp, chainGen, wire: wireInfo(message) });
+      const ratcheted = s.alice.dhRatchetCount > receiverDhBefore;
+      this.conversation.push({
+        sender: 'Bob',
+        text: r.plaintext,
+        chainKeyFp,
+        chainGen,
+        ratcheted,
+        rootKeyFp: hex(s.alice.rootKey),
+        wire: wireInfo(message),
+      });
       this.coachEvent = {
         sender: 'Bob',
         receiver: 'Alice',
-        ratcheted: s.alice.dhRatchetCount > receiverDhBefore,
+        ratcheted,
         messageNumber: message.header.messageNumber,
         receiverDhCount: s.alice.dhRatchetCount,
       };
@@ -846,13 +981,17 @@ export class RatchetWireApp {
 
     set('alice-root-key', hex(alice.rootKey));
     set('alice-send-chain', alice.sendingChain ? hex(alice.sendingChain.chainKey) : '—');
+    set('alice-recv-chain', alice.receivingChain ? hex(alice.receivingChain.chainKey) : '—');
     set('alice-msg-num', String(alice.sendingChain?.messageNumber ?? 0));
     set('alice-dh-count', String(alice.dhRatchetCount));
 
     set('bob-root-key', hex(bob.rootKey));
     set('bob-send-chain', bob.sendingChain ? hex(bob.sendingChain.chainKey) : '—');
+    set('bob-recv-chain', bob.receivingChain ? hex(bob.receivingChain.chainKey) : '—');
     set('bob-msg-num', String(bob.sendingChain?.messageNumber ?? 0));
     set('bob-dh-count', String(bob.dhRatchetCount));
+
+    this.renderConvergence();
 
     set('stat-messages', String(this.conversation.length));
     set('stat-alice-dh', String(alice.dhRatchetCount));
@@ -861,6 +1000,49 @@ export class RatchetWireApp {
 
     this.renderMkTimeline();
     this.renderRatchetViz();
+  }
+
+  /**
+   * Render the convergence check: Alice's sending chain key should be
+   * byte-for-byte identical to Bob's receiving chain key (and vice versa),
+   * even though neither chain key ever crossed the wire. This is the core
+   * insight: X25519 commutes, so both sides independently derive the same
+   * secrets.
+   */
+  private renderConvergence() {
+    const { alice, bob } = this.session;
+
+    const renderRow = (
+      id: string,
+      from: 'Alice' | 'Bob',
+      to: 'Alice' | 'Bob',
+      senderChain: ChainState | null,
+      receiverChain: ChainState | null
+    ) => {
+      const row = document.getElementById(id);
+      if (!row) return;
+      row.classList.remove('match', 'pending');
+
+      if (!senderChain) {
+        row.classList.add('pending');
+        row.textContent = `${from} → ${to}: ${from} has no sending chain yet.`;
+        return;
+      }
+      const senderFp = hex(senderChain.chainKey);
+      const receiverFp = receiverChain ? hex(receiverChain.chainKey) : null;
+      if (senderFp === receiverFp) {
+        row.classList.add('match');
+        row.textContent = `${from} send ≡ ${to} recv: ✓ ${senderFp} on both sides`;
+      } else {
+        row.classList.add('pending');
+        row.textContent =
+          `${from} send ≠ ${to} recv: ${from} has ratcheted ahead — ` +
+          `${to} catches up on the next message.`;
+      }
+    };
+
+    renderRow('converge-a2b', 'Alice', 'Bob', alice.sendingChain, bob.receivingChain);
+    renderRow('converge-b2a', 'Bob', 'Alice', bob.sendingChain, alice.receivingChain);
   }
 
   /**
@@ -880,6 +1062,16 @@ export class RatchetWireApp {
 
     el.innerHTML = '';
     for (const msg of this.conversation) {
+      // A direction change makes the receiver run a DH ratchet: mark the point
+      // where the old root key died and a new one (with new chains) began.
+      if (msg.ratcheted) {
+        const divider = document.createElement('div');
+        divider.className = 'mk-ratchet';
+        divider.textContent =
+          `🔄 DH ratchet — new root key RK ${msg.rootKeyFp} (old root + chains deleted)`;
+        el.appendChild(divider);
+      }
+
       const row = document.createElement('div');
       row.className = `mk-row ${msg.sender.toLowerCase()}`;
 
@@ -1251,6 +1443,84 @@ export class RatchetWireApp {
       container.appendChild(detail);
     }
     detail.textContent = text;
+  }
+
+  // --- Test Yourself quiz ------------------------------------------------------
+
+  /**
+   * Render the quiz from `quizAnswers`. Answered questions lock their options,
+   * reveal the correct one, and show an explanation that points back at the
+   * live tab where the behavior can be reproduced.
+   */
+  private renderQuiz() {
+    const body = document.getElementById('quiz-body');
+    const score = document.getElementById('quiz-score');
+    const retry = document.getElementById('quiz-retry') as HTMLButtonElement | null;
+    if (!body || !score || !retry) return;
+
+    body.innerHTML = '';
+    QUIZ_QUESTIONS.forEach((q, qi) => {
+      const chosen = this.quizAnswers[qi];
+      const card = document.createElement('section');
+      card.className = 'quiz-question';
+
+      const prompt = document.createElement('h4');
+      prompt.id = `quiz-q${qi}`;
+      prompt.textContent = `${qi + 1}. ${q.question}`;
+      card.appendChild(prompt);
+
+      const opts = document.createElement('div');
+      opts.className = 'quiz-options';
+      opts.setAttribute('role', 'group');
+      opts.setAttribute('aria-labelledby', prompt.id);
+      q.options.forEach((option, oi) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'quiz-option';
+        btn.textContent = option;
+        if (chosen !== null) {
+          btn.disabled = true;
+          if (oi === q.answer) btn.classList.add('correct');
+          else if (oi === chosen) btn.classList.add('wrong');
+        } else {
+          btn.addEventListener('click', () => {
+            this.quizAnswers[qi] = oi;
+            this.renderQuiz();
+            this.announce(
+              oi === q.answer ? `Correct. ${q.explain}` : `Not quite. ${q.explain}`
+            );
+          });
+        }
+        opts.appendChild(btn);
+      });
+      card.appendChild(opts);
+
+      if (chosen !== null) {
+        const feedback = document.createElement('p');
+        const correct = chosen === q.answer;
+        feedback.className = `quiz-feedback ${correct ? 'correct' : 'wrong'}`;
+        feedback.textContent = `${correct ? '✓ Correct.' : '✗ Not quite.'} ${q.explain}`;
+        card.appendChild(feedback);
+      }
+
+      body.appendChild(card);
+    });
+
+    const answered = this.quizAnswers.filter((a) => a !== null).length;
+    if (answered === 0) {
+      score.textContent = '';
+      retry.hidden = true;
+    } else {
+      const correct = this.quizAnswers.filter((a, i) => a === QUIZ_QUESTIONS[i].answer).length;
+      const done = answered === QUIZ_QUESTIONS.length;
+      score.textContent = done
+        ? `Final score: ${correct} of ${QUIZ_QUESTIONS.length} correct.` +
+          (correct === QUIZ_QUESTIONS.length
+            ? ' Perfect — you understand the Double Ratchet!'
+            : ' Revisit the tabs mentioned in the explanations, then try again.')
+        : `${correct} of ${answered} answered correctly so far.`;
+      retry.hidden = !done;
+    }
   }
 
   /** Push text to the live region so screen readers announce it. */

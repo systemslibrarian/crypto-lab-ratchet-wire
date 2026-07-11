@@ -235,6 +235,17 @@
             >
               How It Works
             </button>
+            <button
+              class="tab-btn"
+              data-tab="quiz"
+              role="tab"
+              id="tab-quiz"
+              aria-selected="false"
+              aria-controls="quiz"
+              tabindex="-1"
+            >
+              Test Yourself
+            </button>
           </div>
         </nav>
 
@@ -339,7 +350,7 @@
                 </form>
               </div>
 
-              <aside class="state-panel" aria-label="Live key state">
+              <aside class="state-panel" aria-label="Live key state" tabindex="0" role="region">
                 <h3>Key State</h3>
                 <p class="state-panel-hint">Updates live as you send. The root key changes on a DH ratchet; the chain key advances every message.</p>
                 <div class="key-state" aria-live="polite" aria-atomic="true">
@@ -353,6 +364,10 @@
                       <div class="state-item">
                         <dt class="state-label">Chain (Send)</dt>
                         <dd class="state-value" id="alice-send-chain">—</dd>
+                      </div>
+                      <div class="state-item">
+                        <dt class="state-label">Chain (Recv)</dt>
+                        <dd class="state-value" id="alice-recv-chain">—</dd>
                       </div>
                       <div class="state-item">
                         <dt class="state-label">Message #</dt>
@@ -377,6 +392,10 @@
                         <dd class="state-value" id="bob-send-chain">—</dd>
                       </div>
                       <div class="state-item">
+                        <dt class="state-label">Chain (Recv)</dt>
+                        <dd class="state-value" id="bob-recv-chain">—</dd>
+                      </div>
+                      <div class="state-item">
                         <dt class="state-label">Message #</dt>
                         <dd class="state-value" id="bob-msg-num">0</dd>
                       </div>
@@ -387,6 +406,16 @@
                     </dl>
                   </div>
                 </div>
+
+                <section class="convergence" aria-label="Chain convergence check">
+                  <h4>Convergence</h4>
+                  <p class="convergence-hint">
+                    The chain keys match across parties — each side derived them independently
+                    from the DH math. They were never sent over the wire.
+                  </p>
+                  <div class="converge-row" id="converge-a2b"></div>
+                  <div class="converge-row" id="converge-b2a"></div>
+                </section>
               </aside>
             </div>
           </div>
@@ -902,6 +931,31 @@ SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
                 </p>
               </section>
             </article>
+          </div>
+
+          <!-- Tab: Test Yourself quiz -->
+          <div
+            id="quiz"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="tab-quiz"
+            tabindex="0"
+            hidden
+          >
+            <div class="quiz-panel">
+              <h3>Test Yourself</h3>
+              <p class="panel-desc">
+                Seven quick questions on what you just explored. Pick an answer to get instant
+                feedback — every question maps to something you can try live in the other tabs.
+              </p>
+              <div id="quiz-body" class="quiz-body"></div>
+              <div class="quiz-footer">
+                <p id="quiz-score" class="quiz-score" role="status"></p>
+                <button id="quiz-retry" type="button" class="btn btn-ghost" hidden>
+                  <span aria-hidden="true">↺ </span>Try again
+                </button>
+              </div>
+            </div>
           </div>
         </main>
       </div>

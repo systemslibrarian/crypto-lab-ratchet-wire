@@ -237,6 +237,115 @@ describe('App integration (DOM smoke test)', () => {
     expect(document.getElementById('guide-step')!.textContent).toBe('Step 1 of 7');
   });
 
+  it('convergence check: chain keys match across parties as the ratchet advances', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    const a2b = document.getElementById('converge-a2b')!;
+    const b2a = document.getElementById('converge-b2a')!;
+
+    // Before any message: Alice has a sending chain from X3DH, Bob has no
+    // receiving chain yet — and Bob has no sending chain at all.
+    expect(a2b.classList.contains('pending')).toBe(true);
+    expect(b2a.textContent).toMatch(/no sending chain/i);
+
+    // Alice's first message → Bob's first DH ratchet → his receiving chain
+    // now equals her sending chain, byte for byte.
+    (document.getElementById('sample-btn') as HTMLButtonElement).click();
+    await waitFor(() => a2b.classList.contains('match'));
+    expect(a2b.textContent).toContain('✓');
+    expect(a2b.textContent).toMatch(/[0-9A-F]{16}/);
+    // Bob ratcheted ahead: his new sending chain has no counterpart at Alice yet.
+    expect(b2a.classList.contains('pending')).toBe(true);
+
+    // Bob replies → Alice ratchets → his sending chain converges with her
+    // receiving chain.
+    (document.querySelector('input[name="sender"][value="bob"]') as HTMLInputElement).checked =
+      true;
+    const input = document.getElementById('message-input') as HTMLInputElement;
+    input.value = 'reply from Bob';
+    document.getElementById('message-form')!.dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true })
+    );
+    await waitFor(() => b2a.classList.contains('match'));
+    expect(b2a.textContent).toContain('✓');
+  });
+
+  it('timeline marks each DH ratchet with a root-key divider', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    const send = async (who: 'alice' | 'bob', text: string) => {
+      (document.querySelector(`input[name="sender"][value="${who}"]`) as HTMLInputElement).checked =
+        true;
+      const input = document.getElementById('message-input') as HTMLInputElement;
+      input.value = text;
+      document.getElementById('message-form')!.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true })
+      );
+      await waitFor(() =>
+        Array.from(document.querySelectorAll('#messages .message-bubble')).some(
+          (b) => b.textContent === text
+        )
+      );
+    };
+
+    // First message → Bob's first DH ratchet → one divider.
+    await send('alice', 'first');
+    expect(document.querySelectorAll('#mk-timeline .mk-ratchet').length).toBe(1);
+
+    // Same direction → symmetric ratchet only → still one divider.
+    await send('alice', 'second');
+    expect(document.querySelectorAll('#mk-timeline .mk-ratchet').length).toBe(1);
+    expect(document.querySelectorAll('#mk-timeline .mk-row').length).toBe(2);
+
+    // Direction change → Alice DH-ratchets → a second divider with a root key.
+    await send('bob', 'third');
+    const dividers = document.querySelectorAll('#mk-timeline .mk-ratchet');
+    expect(dividers.length).toBe(2);
+    expect(dividers[1].textContent).toMatch(/new root key RK [0-9A-F]{16}/);
+  });
+
+  it('quiz: answers give instant feedback, score accumulates, retry resets', async () => {
+    const { RatchetWireApp } = await import('../main');
+    await new RatchetWireApp().init();
+
+    const questions = document.querySelectorAll('#quiz-body .quiz-question');
+    expect(questions.length).toBe(7);
+
+    // Question 1: the correct answer is "until the next DH ratchet" (option 3).
+    const q1Options = questions[0].querySelectorAll<HTMLButtonElement>('.quiz-option');
+    q1Options[2].click();
+    const q1 = document.querySelectorAll('#quiz-body .quiz-question')[0];
+    expect(q1.querySelector('.quiz-feedback')!.classList.contains('correct')).toBe(true);
+    expect(q1.querySelector('.quiz-option.correct')).not.toBeNull();
+    expect(document.getElementById('quiz-score')!.textContent).toContain('1 of 1');
+
+    // Question 2: a wrong answer is marked and explained, score reflects it.
+    const q2Options = document
+      .querySelectorAll('#quiz-body .quiz-question')[1]
+      .querySelectorAll<HTMLButtonElement>('.quiz-option');
+    q2Options[0].click();
+    const q2 = document.querySelectorAll('#quiz-body .quiz-question')[1];
+    expect(q2.querySelector('.quiz-feedback')!.classList.contains('wrong')).toBe(true);
+    expect(q2.querySelector('.quiz-option.wrong')).not.toBeNull();
+    expect(document.getElementById('quiz-score')!.textContent).toContain('1 of 2');
+
+    // Answer the rest (always the correct option) → final score + retry.
+    for (let qi = 2; qi < 7; qi++) {
+      const card = document.querySelectorAll('#quiz-body .quiz-question')[qi];
+      const correctIdx = [2, 1, 1, 0, 2, 2, 1][qi];
+      card.querySelectorAll<HTMLButtonElement>('.quiz-option')[correctIdx].click();
+    }
+    expect(document.getElementById('quiz-score')!.textContent).toMatch(/Final score: 6 of 7/);
+    const retry = document.getElementById('quiz-retry') as HTMLButtonElement;
+    expect(retry.hidden).toBe(false);
+
+    retry.click();
+    expect(document.querySelectorAll('#quiz-body .quiz-feedback').length).toBe(0);
+    expect(document.getElementById('quiz-score')!.textContent).toBe('');
+  });
+
   it('demonstrates the MITM defense: a tampered pre-key is blocked', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();

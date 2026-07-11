@@ -517,6 +517,43 @@ a:hover {
   text-align: right;
 }
 
+/* Convergence check: proves the two parties hold identical chain keys. */
+.convergence {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.convergence h4 {
+  margin-bottom: 0.35rem;
+  font-size: 0.875rem;
+}
+
+.convergence-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.65rem;
+}
+
+.converge-row {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.converge-row.match {
+  color: var(--color-success);
+  background-color: color-mix(in srgb, var(--color-success) 10%, transparent);
+}
+
+.converge-row.pending {
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg);
+}
+
 /* ---- Buttons ---- */
 .btn {
   min-height: var(--tap-min);
@@ -757,6 +794,20 @@ a:hover {
   font-style: italic;
   color: var(--color-text-secondary);
   white-space: nowrap;
+}
+
+/* DH-ratchet divider in the timeline: marks a root-key replacement.
+   No background tint: --color-warning only clears WCAG AA against the panel
+   background itself (a tint pushed light-theme contrast below 4.5:1). */
+.mk-ratchet {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-warning);
+  padding: 0.35rem 0.7rem;
+  border: 1px dashed var(--color-warning);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
 }
 
 /* ---- Out-of-order delivery demo ---- */
@@ -1583,6 +1634,100 @@ a:hover {
 
 .comparison-table tr:last-child td {
   border-bottom: none;
+}
+
+/* ---- Test Yourself quiz ---- */
+.quiz-panel {
+  background-color: var(--color-bg-light);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.quiz-question {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.quiz-question h4 {
+  font-size: 0.95rem;
+  margin-bottom: 0.75rem;
+}
+
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quiz-option {
+  min-height: var(--tap-min);
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background-color: var(--color-bg-light);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+  touch-action: manipulation;
+}
+
+.quiz-option:hover:not(:disabled) {
+  border-color: var(--color-focus);
+}
+
+.quiz-option:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.quiz-option.correct {
+  border-color: var(--color-success);
+  color: var(--color-success);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.quiz-option.wrong {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  text-decoration: line-through;
+  opacity: 1;
+}
+
+.quiz-feedback {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.quiz-feedback.correct {
+  color: var(--color-success);
+}
+
+.quiz-feedback.wrong {
+  color: var(--color-danger);
+}
+
+.quiz-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.quiz-score {
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 /* =============== RESPONSIVE =============== */

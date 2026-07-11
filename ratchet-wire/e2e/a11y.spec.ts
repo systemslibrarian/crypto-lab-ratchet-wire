@@ -8,7 +8,7 @@ import AxeBuilder from '@axe-core/playwright';
  * red/green demo styling).
  */
 
-const TABS = ['conversation', 'x3dh', 'ooo', 'fs', 'state', 'compromise', 'about'] as const;
+const TABS = ['conversation', 'x3dh', 'ooo', 'fs', 'state', 'compromise', 'about', 'quiz'] as const;
 
 async function analyze(page: import('@playwright/test').Page) {
   const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
@@ -38,6 +38,11 @@ for (const theme of ['dark', 'light'] as const) {
     await page.click('#fs-run');
     await page.click('#tab-ooo');
     await page.click('#ooo-generate');
+    // Answer one quiz question right and one wrong so axe sees the
+    // correct/wrong feedback styling in both themes.
+    await page.click('#tab-quiz');
+    await page.locator('#quiz-body .quiz-question').first().locator('.quiz-option').nth(2).click();
+    await page.locator('#quiz-body .quiz-question').nth(1).locator('.quiz-option').first().click();
 
     for (const tab of TABS) {
       await page.click(`#tab-${tab}`);

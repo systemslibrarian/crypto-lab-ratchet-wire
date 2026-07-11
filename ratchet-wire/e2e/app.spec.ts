@@ -107,6 +107,61 @@ test('Restart clears the conversation and resets the tour', async ({ page }) => 
   await expect(page.locator('#guide-step')).toHaveText('Step 1 of 7');
 });
 
+test('the convergence check proves both parties derived the same chain key', async ({ page }) => {
+  // Before any message, neither direction has converged.
+  await expect(page.locator('#converge-b2a')).toContainText(/no sending chain/i);
+
+  await page.getByRole('button', { name: /Send a sample message/i }).click();
+  await expect(page.locator('#converge-a2b')).toHaveClass(/match/);
+  await expect(page.locator('#converge-a2b')).toContainText('✓');
+
+  // Bob replies → the reverse direction converges too.
+  await page.locator('input[name="sender"][value="bob"]').check();
+  await page.fill('#message-input', 'reply');
+  await page.click('#send-btn');
+  await expect(page.locator('#converge-b2a')).toHaveClass(/match/);
+});
+
+test('the live timeline marks DH ratchets with root-key dividers', async ({ page }) => {
+  await page.getByRole('button', { name: /Send a sample message/i }).click();
+  await page.locator('input[name="sender"][value="bob"]').check();
+  await page.fill('#message-input', 'reply');
+  await page.click('#send-btn');
+
+  await page.click('#tab-state');
+  await expect(page.locator('#mk-timeline .mk-ratchet')).toHaveCount(2);
+  await expect(page.locator('#mk-timeline .mk-ratchet').last()).toContainText('new root key RK');
+});
+
+test('the quiz gives instant feedback and a final score', async ({ page }) => {
+  await page.click('#tab-quiz');
+  await expect(page.locator('#quiz-body .quiz-question')).toHaveCount(7);
+
+  // Correct answer on question 1.
+  await page
+    .locator('#quiz-body .quiz-question')
+    .first()
+    .locator('.quiz-option')
+    .nth(2)
+    .click();
+  await expect(page.locator('#quiz-body .quiz-feedback').first()).toHaveClass(/correct/);
+  await expect(page.locator('#quiz-score')).toContainText('1 of 1');
+
+  // Wrong answer on question 2 is explained, not just marked.
+  await page
+    .locator('#quiz-body .quiz-question')
+    .nth(1)
+    .locator('.quiz-option')
+    .first()
+    .click();
+  await expect(page.locator('#quiz-body .quiz-question').nth(1).locator('.quiz-feedback')).toHaveClass(
+    /wrong/
+  );
+  await expect(
+    page.locator('#quiz-body .quiz-question').nth(1).locator('.quiz-feedback')
+  ).toContainText(/ratchet public key/i);
+});
+
 test('the MITM demo rejects a tampered pre-key', async ({ page }) => {
   await page.getByRole('button', { name: /Simulate a tampered pre-key/i }).click();
   await expect(page.locator('#mitm-result')).toContainText(/Blocked/i);

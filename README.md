@@ -15,7 +15,7 @@ Ratchet Wire is a browser-based demonstration of the Double Ratchet Algorithm wi
 
 **[systemslibrarian.github.io/crypto-lab-ratchet-wire](https://systemslibrarian.github.io/crypto-lab-ratchet-wire/)**
 
-The demo lets you switch between Conversation, Ratchet State, Break-In Recovery, and How It Works tabs while sending messages as Alice or Bob and watching the live root-key and chain-key state update. It also includes the Compromise Bob's Keys, Alice Sends Message, and Bob Receives (DH Ratchet) controls so you can step through break-in recovery behavior. There are no key-size or iteration controls in this demo; the interactive controls are the sender selector, message input, tabs, and recovery buttons.
+The demo lets you switch between Conversation, X3DH Handshake, Out of Order, Ratchet State, Forward Secrecy, Break-In Recovery, How It Works, and Test Yourself tabs while sending messages as Alice or Bob and watching the live root-key and chain-key state update. The Key State panel includes a convergence check proving both parties independently derived identical chain keys, and the live message-key timeline marks every DH ratchet with the root key it replaced. A guided tour and a reactive coach narrate each cryptographic event, and the Test Yourself tab closes the loop with an instant-feedback quiz. There are no key-size or iteration controls in this demo; the interactive controls are the sender selector, message input, tabs, and per-demo buttons.
 
 ## What Can Go Wrong
 
