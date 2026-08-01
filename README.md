@@ -9,7 +9,7 @@ Ratchet Wire is a browser-based demonstration of the Double Ratchet Algorithm wi
 - Use it for asynchronous end-to-end messaging systems where each message needs its own fresh encryption key, because the Double Ratchet Algorithm is designed to preserve confidentiality across long conversations.
 - Use it when you need forward secrecy and break-in recovery in a chat protocol, because compromised current state should not expose old traffic and should stop helping an attacker after a ratchet step.
 - Use it for educational or prototype work that needs to illustrate X25519, HKDF-SHA256, AES-256-GCM, and Simplified X3DH together, because this demo exposes those pieces directly in the UI and source.
-- Do NOT use this demo as a production messenger, because the Simplified X3DH implementation explicitly omits signatures, one-time pre-keys, and persistent state management.
+- Do NOT use this demo as a production messenger, because the Simplified X3DH implementation models the identity as separate Ed25519 and X25519 keys instead of Signal's XEdDSA, omits the pre-key server and pre-key rotation, and has no persistent state management.
 
 ## Live Demo
 
@@ -19,7 +19,7 @@ The demo lets you switch between Conversation, X3DH Handshake, Out of Order, Rat
 
 ## What Can Go Wrong
 
-- **Unauthenticated handshake.** The Simplified X3DH here drops the signed pre-key signature, so without authenticating identity keys out-of-band an active attacker can mount a man-in-the-middle on the initial session setup.
+- **Unauthenticated identity keys.** The handshake here does verify Bob's signed pre-key against his Ed25519 identity key and aborts if that signature fails, but the identity key itself arrives in-band; without pinning or comparing it out-of-band, an active attacker who substitutes the whole bundle can still mount a man-in-the-middle on the initial session setup.
 - **Skipped-message key growth.** Out-of-order or dropped messages force the receiver to store skipped message keys; without a cap, an attacker can flood gaps and exhaust memory (a denial-of-service vector).
 - **AES-256-GCM nonce reuse.** If a per-message key and nonce pair ever repeats, GCM's confidentiality and tag-forgery resistance collapse, so each message key must be used exactly once.
 - **No post-compromise recovery without a DH step.** Forward secrecy protects past messages, but healing after a state compromise only happens once a fresh DH ratchet step runs; until then a stolen chain key keeps decrypting new messages.
@@ -49,5 +49,7 @@ npm run dev
 - [crypto-lab-ssh-handshake](https://systemslibrarian.github.io/crypto-lab-ssh-handshake/) — X25519 + Ed25519 session establishment in a different transport protocol.
 
 ---
+
+*One of 170+ browser demos in the [Crypto Lab](https://crypto-lab.systemslibrarian.dev/) suite.*
 
 *"So whether you eat or drink or whatever you do, do it all for the glory of God." — 1 Corinthians 10:31*
