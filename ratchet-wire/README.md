@@ -90,6 +90,16 @@ The Double Ratchet combines:
 - One-time pre-key contributing the 4th DH (`SK = HKDF(DH1‖DH2‖DH3‖DH4)`)
 - Out-of-order delivery, skipped-key bounds, and AEAD-bound headers
 
+**Known deviation — the X3DH `F` prefix is omitted:**
+[X3DH §2.2](https://signal.org/docs/specifications/x3dh/#cryptographic-notation)
+defines `KDF(KM) = HKDF(F ‖ KM, …)` where `F` is **32 bytes of `0xFF`** for
+X25519 (57 for X448), present for cryptographic domain separation with XEdDSA.
+This demo hashes the bare `DH1‖DH2‖DH3‖DH4` with no `F` prefix. The `SK` it
+derives therefore differs from a conformant implementation's over the same keys,
+and **this demo is not interoperable with real X3DH or libsignal**. The omission
+is disclosed in the app's *How It Works* tab and left in place deliberately —
+correcting it would move every pinned test vector and every key the UI displays.
+
 **Production (Signal, WhatsApp) additionally has:**
 - A single identity key for both DH and signing via **XEdDSA** (Web Crypto has
   no XEdDSA, so this demo uses a separate Ed25519 signing key + X25519 DH key)

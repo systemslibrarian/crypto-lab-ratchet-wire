@@ -19,6 +19,17 @@
  *
  *   SK = HKDF( DH1 || DH2 || DH3 || DH4 )
  *
+ * DEVIATION FROM THE SPEC — the F prefix is omitted.
+ * X3DH §2.2 defines KDF(KM) = HKDF(F || KM, ...), where F is 32 bytes of 0xFF
+ * for X25519 (57 for X448). F exists for cryptographic domain separation with
+ * XEdDSA. This demo feeds HKDF the bare DH1 || DH2 || DH3 || DH4 with no F
+ * prefix, so the SK it derives differs from the one a spec-conformant X3DH
+ * would derive over the same keys. The demo is therefore NOT interoperable
+ * with real X3DH / libsignal. The omission is preserved deliberately: every
+ * pinned test vector and displayed key in this lab derives from it. It is
+ * disclosed in the "How It Works" tab rather than silently corrected.
+ * See {@link deriveRootKey}.
+ *
  * After X3DH the two parties initialize the ratchet ASYMMETRICALLY (see
  * {@link createAliceRatchetState} / {@link createBobRatchetState}); Bob's signed
  * pre-key doubles as his initial ratchet public key, exactly as in Signal.
@@ -295,7 +306,16 @@ export function createBobRatchetState(
   };
 }
 
-/** Concatenate the DH outputs and derive SK via HKDF. */
+/**
+ * Concatenate the DH outputs and derive SK via HKDF.
+ *
+ * SPEC DEVIATION: X3DH §2.2 sets the HKDF input key material to `F || KM`,
+ * with F = 32 bytes of 0xFF for X25519. This demo passes KM alone. Adding F
+ * here would be a one-line change, but it would move every SK, root key,
+ * chain key and message key in the lab and invalidate the pinned vectors in
+ * src/__tests__/, so the deviation is documented instead of patched. Anything
+ * derived here interoperates only with this demo, never with libsignal.
+ */
 async function deriveRootKey(dhOutputs: ArrayBuffer[]): Promise<ArrayBuffer> {
   const concatenated = concatenateBuffers(dhOutputs);
   const rootKey = await hkdf(concatenated, X3DH_SALT, DOMAIN_LABELS.ROOT, 32);

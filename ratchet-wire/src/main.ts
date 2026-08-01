@@ -668,7 +668,15 @@ export class RatchetWireApp {
     }
     container.appendChild(grid);
 
-    container.appendChild(step('x3dh-sk', `② SK = HKDF(DH1 ‖ DH2 ‖ DH3 ‖ DH4) = ${bd.rootKey}`));
+    // NOTE: no `F` prefix. X3DH §2.2 specifies HKDF over `F ‖ KM` with F = 32
+    // bytes of 0xFF; this demo omits it, so SK is not spec-interoperable. The
+    // label says so, and the "How It Works" tab explains why it stays that way.
+    container.appendChild(
+      step(
+        'x3dh-sk',
+        `② SK = HKDF(DH1 ‖ DH2 ‖ DH3 ‖ DH4) = ${bd.rootKey}  [demo KDF — omits X3DH's 32-byte 0xFF F prefix, not interoperable]`
+      )
+    );
   }
 
   /** Show the authenticated-handshake banner (fingerprint + verified state). */

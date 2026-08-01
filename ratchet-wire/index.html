@@ -875,6 +875,21 @@ root_new ‖ chain_key = HKDF(
 verify  Sig(IK_B, SPK_B)            ← abort on MITM
 SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
                 </code></pre>
+
+                <aside class="edu-disclaimer" role="note">
+                  <p>
+                    <strong>Deviation from the spec — the <code>F</code> prefix is omitted.</strong>
+                    Real X3DH does not hash the DH outputs bare. <a href="https://signal.org/docs/specifications/x3dh/#cryptographic-notation" target="_blank" rel="noopener noreferrer">X3DH §2.2<span class="sr-only">(opens in new tab)</span></a>
+                    defines <code>KDF(KM) = HKDF(F ‖ KM, …)</code>, where <code>F</code> is
+                    <strong>32 bytes of 0xFF</strong> for X25519 (57 bytes for X448). <code>F</code> is
+                    there for cryptographic domain separation with XEdDSA. This demo computes
+                    <code>HKDF(DH1 ‖ DH2 ‖ DH3 ‖ DH4)</code> with <em>no</em> <code>F</code> prefix, so
+                    the shared secret shown above is <strong>not</strong> the secret a spec-conformant
+                    X3DH would derive from the same keys — this demo is
+                    <strong>not interoperable with real X3DH or libsignal</strong>. The line above, and
+                    every key the Conversation tab displays, reflects the demo's KDF, not Signal's.
+                  </p>
+                </aside>
               </section>
 
               <section>
@@ -888,6 +903,11 @@ SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
 
                 <p><strong>Still simplified (for the demo):</strong></p>
                 <ul>
+                  <li>
+                    The X3DH KDF <strong>omits the <code>F</code> prefix</strong> (32 bytes of 0xFF)
+                    that X3DH §2.2 requires, so derived secrets do not match a conformant
+                    implementation — see the note above
+                  </li>
                   <li>
                     Identity uses a separate Ed25519 signing key + X25519 DH key, where production
                     Signal uses a single key via <strong>XEdDSA</strong> (not exposed by Web Crypto)
