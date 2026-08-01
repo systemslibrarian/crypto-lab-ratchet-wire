@@ -1,8 +1,12 @@
 /**
  * Symmetric-key Ratchet (Chain Keys -> Message Keys)
  *
- * Reference: Signal Double Ratchet Specification, Section 2.2 (KDF_CK)
+ * Reference: Signal Double Ratchet Specification
  * https://signal.org/docs/specifications/doubleratchet/
+ * §2.2 ("Symmetric-key ratchet") describes the idea; KDF_CK itself is defined
+ * in §3.1 ("External functions") and instantiated in §7.2 ("Recommended
+ * cryptographic algorithms"). This header previously attributed KDF_CK to
+ * §2.2, which never names it.
  *
  * The symmetric ratchet turns a chain key into a sequence of unique message
  * keys. Each step derives:
@@ -41,7 +45,13 @@ export interface MessageKey {
   messageNumber: number;
 }
 
-// Single-byte domain separators (Signal uses constant inputs to KDF_CK).
+// Single-byte domain separators, 0x01 for the message key and 0x02 for the
+// next chain key — the same two constants §7.2 recommends. The roles are
+// swapped relative to the spec, though: §7.2 keys an HMAC with ck and feeds
+// the constant as the *input*, whereas this demo runs HKDF with ck as the
+// input key material and the constant as the *salt*. Both are one-way and
+// domain-separated, but the outputs are not the same bytes, which is one more
+// reason nothing here interoperates with libsignal.
 const MESSAGE_KEY_SALT = new Uint8Array([0x01]).buffer;
 const CHAIN_KEY_SALT = new Uint8Array([0x02]).buffer;
 

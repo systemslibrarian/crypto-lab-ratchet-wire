@@ -1,8 +1,14 @@
 /**
  * Diffie-Hellman Ratchet (Root Key Chain)
  *
- * Reference: Signal Double Ratchet Specification, Section 3.3 (DHRatchet)
+ * Reference: Signal Double Ratchet Specification
  * https://signal.org/docs/specifications/doubleratchet/
+ * The DHRatchet pseudocode this mirrors is in §3.5 ("Decrypting messages"),
+ * where RatchetDecrypt calls it; §3.3 is "Initialization", which this file's
+ * header used to cite by mistake. KDF_RK's contract is §3.1 ("External
+ * functions") and its HKDF instantiation is §7.2 ("Recommended cryptographic
+ * algorithms") in the current revision — §5.2 before the Sparse PQ Ratchet and
+ * Triple Ratchet sections were inserted ahead of it.
  *
  * The DH ratchet advances the root key whenever the conversation changes
  * direction. It is what gives the protocol break-in recovery (a.k.a.

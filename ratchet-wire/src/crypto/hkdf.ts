@@ -75,7 +75,15 @@ export const DOMAIN_LABELS = {
 } as const;
 
 /**
- * KDF_RK — the root-key KDF of the Double Ratchet (Signal spec, section 3.3).
+ * KDF_RK — the root-key KDF of the Double Ratchet.
+ *
+ * Signal spec §3.1 ("External functions") states the contract: KDF_RK(rk,
+ * dh_out) returns a 32-byte root key and a 32-byte chain key. §7.2
+ * ("Recommended cryptographic algorithms") gives the instantiation followed
+ * here — HKDF-SHA256 with rk as the salt, dh_out as the input key material,
+ * an application-specific info string, and 64 bytes of output split in half.
+ * (§7.2 was §5.2 before the spec gained its Sparse PQ Ratchet and Triple
+ * Ratchet sections. Neither has ever been §3.3, which is "Initialization".)
  *
  * Derives a new root key and a new chain key from the current root key and a
  * fresh Diffie-Hellman output:

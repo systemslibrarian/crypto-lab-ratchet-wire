@@ -1408,18 +1408,31 @@ export class RatchetWireApp {
     this.recovery.bob = r.newState;
     this.recovery.bobSkipped = r.skippedKeys;
 
+    // Whether the root key actually moved is read off the two values, not
+    // assumed from having pressed the button. If a DH ratchet had failed to
+    // fire, "New root (safe)" would otherwise print over an unchanged key and
+    // announce a recovery that never happened.
     const newRoot = hex(this.recovery.bob.rootKey, 16);
+    const rotated = newRoot !== this.recoverySnapshotRoot;
     this.setRecoveryDetail(
       'recovery-complete-status',
       `Old root (attacker has): ${this.recoverySnapshotRoot}…\n` +
-        `New root (safe):         ${newRoot}…\n` +
-        `Decrypted: "${r.plaintext}" — the snapshot can no longer derive Bob's keys.`
+        `New root${rotated ? ' (safe)' : ' (UNCHANGED — no DH ratchet fired)'}:         ${newRoot}…\n` +
+        `Bob's DH ratchet count: ${this.recovery.bob.dhRatchetCount}\n` +
+        `Decrypted: "${r.plaintext}"` +
+        (rotated
+          ? " — the root key was replaced by KDF_RK over a DH with Alice's new ratchet key, which the attacker's snapshot cannot reproduce."
+          : ' — but the root key did not move, so nothing was recovered. This is a bug, not a lesson.')
     );
 
     (document.getElementById('recovery-complete-status') as HTMLDivElement).hidden = false;
     (document.getElementById('recovery-complete-btn') as HTMLButtonElement).disabled = true;
 
-    this.announce('Break-in recovery complete. Bob\'s root key changed; the attacker is locked out.');
+    this.announce(
+      rotated
+        ? "Break-in recovery complete. Bob's root key changed; the attacker is locked out."
+        : "Break-in recovery did not complete: Bob's root key is unchanged."
+    );
   }
 
   /** Deliver one message within the recovery session. */
