@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
  * "does it work in a browser" check that the Vitest + happy-dom suite can only
  * approximate. Build first (`npm run build`); the web server serves `dist/`.
  */
-const PORT = 4173;
+const PORT = 4666;
 const BASE_URL = `http://localhost:${PORT}/crypto-lab-ratchet-wire/`;
 
 export default defineConfig({
