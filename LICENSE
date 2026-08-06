@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Paul Clark
+Copyright (c) 2026 Systems Librarian
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,10 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-This is an EDUCATIONAL demonstration of the Double Ratchet algorithm. It is not
-audited and is not intended to secure real data. For production end-to-end
-encryption, use a vetted implementation such as libsignal
-(https://github.com/signalapp/libsignal).
