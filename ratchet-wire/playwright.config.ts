@@ -19,9 +19,25 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     trace: 'on-first-retry',
-    // Determinism: skip CSS animations so assertions (and axe contrast checks)
-    // never race a fade-in. The app honours prefers-reduced-motion.
-    reducedMotion: 'reduce',
+    /*
+     * NO `reducedMotion: 'reduce'` HERE, because on this Playwright it does
+     * nothing and the comment that used to sit in its place said it did.
+     *
+     * Measured on @playwright/test 1.61.0 against this very page: with
+     * `reducedMotion: 'reduce'` set in this block,
+     * `matchMedia('(prefers-reduced-motion: reduce)').matches` evaluates to
+     * FALSE inside the page; calling `page.emulateMedia({ reducedMotion:
+     * 'reduce' })` on the same page then makes it TRUE. The context-level
+     * option is a no-op here, so the "determinism" this claimed to buy — "skip
+     * CSS animations so assertions never race a fade-in" — was never bought,
+     * and the suite has been racing `fadeIn`/`slideIn` all along while reading
+     * as though it could not.
+     *
+     * The a11y gate establishes reduced motion the way that works: `boot()` in
+     * `e2e/gate.ts` calls `page.emulateMedia()` BEFORE navigating and then
+     * ASSERTS from inside the page that it took effect, so this can never
+     * silently rot back into a claim nothing checks.
+     */
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
