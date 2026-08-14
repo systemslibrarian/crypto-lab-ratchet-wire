@@ -155,9 +155,14 @@ describe('App integration (DOM smoke test)', () => {
     );
 
     await waitFor(() => !!document.querySelector('#messages .message-bubble'));
-    expect(document.querySelector('#messages .message-bubble')!.textContent).toBe(
-      'hello from the browser'
-    );
+    // The bubble carries an off-screen "Alice says: " attribution ahead of the
+    // message text — real text rather than an `aria-label`, which ARIA prohibits
+    // on a roleless <div> and which AT therefore ignores. Asserted here so the
+    // attribution cannot be dropped silently.
+    const bubble = document.querySelector('#messages .message-bubble')!;
+    expect(bubble.textContent).toBe('Alice says: hello from the browser');
+    expect(bubble.querySelector('.sr-only')!.textContent).toBe('Alice says: ');
+    expect(bubble.getAttribute('aria-label')).toBeNull();
 
     // The per-message wire inspector teaches the header format.
     const wire = document.querySelector('#messages .wire-detail .wire-fields');
@@ -283,9 +288,13 @@ describe('App integration (DOM smoke test)', () => {
       document.getElementById('message-form')!.dispatchEvent(
         new Event('submit', { bubbles: true, cancelable: true })
       );
+      // A bubble's text is the off-screen "Alice says: " / "Bob says: "
+      // attribution followed by the message, so waiting on the attributed form
+      // also pins the message to the sender this call selected.
+      const label = who === 'alice' ? 'Alice' : 'Bob';
       await waitFor(() =>
         Array.from(document.querySelectorAll('#messages .message-bubble')).some(
-          (b) => b.textContent === text
+          (b) => b.textContent === `${label} says: ${text}`
         )
       );
     };

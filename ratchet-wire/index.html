@@ -38,10 +38,20 @@
   .cl-title{color:#eafff8;font-weight:700;font-size:1.05rem;letter-spacing:.12em}
   .cl-sub{color:#5e8b80;font-size:.72rem;letter-spacing:.04em}
   .cl-actions{display:flex;align-items:center;gap:.5rem}
+  /* The resting border is 50%, not the 38% this shipped with, and the number is
+     measured rather than chosen. These buttons have no fill, so the 1px border is
+     the ONLY thing that delineates them, which puts them under WCAG 1.4.11 at
+     3:1 against the bar. `color-mix(..., 38%, transparent)` composites over the
+     bar's #0b1512 to rgb(27, 94, 82) — 2.45:1, a failure; 45% still only reaches
+     2.97:1; 50% composites to rgb(32, 118, 103) and clears at 3.38:1. Hover was
+     never the problem (it repaints the border at full --accent, 10.2:1).
+     This is this lab's own copy of the top bar — per CLAUDE.md each lab owns its
+     header, so this is a local fix, not a fleet push. `e2e/nontext.ts` measures
+     it on every run, which is why the baseline next to it is empty. */
   .cl-btn{
     display:inline-flex;align-items:center;gap:.4rem;
     padding:.5rem .85rem;border-radius:10px;
-    border:1px solid color-mix(in srgb, var(--accent, #35d6bb) 38%, transparent);
+    border:1px solid color-mix(in srgb, var(--accent, #35d6bb) 50%, transparent);
     background:transparent;color:var(--cl-ink);cursor:pointer;
     font:inherit;font-size:.78rem;font-weight:700;letter-spacing:.1em;
     text-transform:uppercase;text-decoration:none;transition:background .15s,border-color .15s,color .15s;
@@ -173,14 +183,23 @@
               DH ratchets advance the keys step by step, live.
             </p>
           </div>
-          <aside class="cl-hero-why" aria-label="Why it matters">
+          <!--
+            A <div>, not an <aside>. This sits inside <header class="header"
+            role="region" aria-label="Ratchet Wire">, which IS a landmark, so an
+            <aside> here is a complementary landmark nested inside another one —
+            axe's `landmark-complementary-is-top-level`, and a screen-reader
+            landmark list that offers a "complementary" region which is really a
+            sentence of hero copy. The visible "WHY IT MATTERS" label already
+            names the block, so the aria-label it carried was redundant too.
+          -->
+          <div class="cl-hero-why">
             <span class="cl-hero-why-label">WHY IT MATTERS</span>
             <p class="cl-hero-why-text">
               This is the engine behind Signal, WhatsApp, and Google Messages.
               Forward secrecy means a stolen key can't decrypt past messages, and
               break-in recovery means security heals itself after a compromise.
             </p>
-          </aside>
+          </div>
         </div>
       </header>
 
@@ -577,7 +596,21 @@
 
               <section class="chain-diagram" aria-label="Live message-key timeline">
                 <h3>Message Keys Derived (live)</h3>
-                <div id="mk-timeline" class="mk-timeline" role="log" aria-live="polite">
+                <!--
+                  tabindex="0" and a name, matching #messages above. This is a
+                  role="log" that only starts to overflow once real traffic has
+                  run, and `.mk-timeline` is `overflow-y: auto` — so without a
+                  tab stop the rows that scroll out of view are unreachable by
+                  keyboard (SC 2.1.1) and the region is unnamed on entry.
+                -->
+                <div
+                  id="mk-timeline"
+                  class="mk-timeline"
+                  role="log"
+                  aria-live="polite"
+                  aria-label="Message keys derived"
+                  tabindex="0"
+                >
                   <p class="diagram-note">
                     Send messages on the Conversation tab to watch each chain key (CK) derive a
                     single message key (MK), which is used once and then deleted — that deletion is
@@ -837,7 +870,7 @@
 
                 <h4>Symmetric Ratchet:</h4>
                 <p>Uses HKDF to derive a unique message key from a chain key:</p>
-                <pre><code>
+                <pre tabindex="0"><code>
 MK[n] = HKDF(CK[n], salt=0x01, "ratchet-wire-message")
 CK[n+1] = HKDF(CK[n], salt=0x02, "ratchet-wire-chain")
                 </code></pre>
@@ -845,7 +878,7 @@ CK[n+1] = HKDF(CK[n], salt=0x02, "ratchet-wire-chain")
                 <h4>DH Ratchet:</h4>
                 <p>Uses fresh X25519 key pairs to derive a new root key and a new chain key
                   (the root key is the HKDF salt, the DH output is the input key material):</p>
-                <pre><code>
+                <pre tabindex="0"><code>
 root_new ‖ chain_key = HKDF(
     ikm  = DH(my_private, their_public),
     salt = root_old,
@@ -889,7 +922,7 @@ root_new ‖ chain_key = HKDF(
                     the session stays secret even if Bob's long-term keys later leak.
                   </li>
                 </ul>
-                <pre><code>
+                <pre tabindex="0"><code>
 verify  Sig(IK_B, SPK_B)            ← abort on MITM
 SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
                 </code></pre>
@@ -1012,7 +1045,16 @@ SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
     <!-- Screen reader announcements -->
     <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
 
-    <footer style="text-align:center; padding: 1.5rem; font-size: 0.85rem; opacity: 0.7; margin-top: 2rem;">
+    <!--
+      No `opacity` on this footer. It used to carry `opacity: 0.7`, which fades
+      the TEXT and its backdrop is not faded with it, so the five related-demo
+      links composited to rgb(80, 148, 228) on rgb(246, 248, 250) — 2.95:1, under
+      the 4.5:1 that SC 1.4.3 requires, in the light theme. The recessed look is
+      kept with a colour that is measured rather than derived: --color-text-secondary
+      is 6.0:1 on the light background and ~7:1 on the dark one, and the links
+      keep --color-alice at full strength (4.75:1 light, 9.7:1 dark).
+    -->
+    <footer style="text-align:center; padding: 1.5rem; font-size: 0.85rem; color: var(--color-text-secondary); margin-top: 2rem;">
       <p style="margin:0 0 0.5rem;">Related demos:
         <a href="https://systemslibrarian.github.io/crypto-lab-x3dh-wire/">crypto-lab-x3dh-wire</a>,
         <a href="https://systemslibrarian.github.io/crypto-lab-mls-group/">crypto-lab-mls-group</a>,

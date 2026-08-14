@@ -4,6 +4,27 @@
   --color-bg: #0d1117;
   --color-bg-light: #161b22;
   --color-border: #30363d;
+  /*
+   * TWO border tokens, because a border does two jobs with two different
+   * requirements and one colour cannot satisfy both.
+   *
+   * --color-border DIVIDES SURFACES (panel edges, table rules, section splits).
+   * WCAG asks nothing of it, so it stays quiet at #30363d.
+   *
+   * --color-control-border DELINEATES A CONTROL, and WCAG 1.4.11 requires 3:1
+   * against the surface OUTSIDE the control whenever the border is the only
+   * thing that makes the control visible — which is the case for every control
+   * it is applied to below, each of which is filled with the same colour as the
+   * panel behind it or with nothing at all. Shipping #30363d on those measured
+   * 1.36:1–1.55:1: the boundary was decorative, not perceivable.
+   *
+   * #6e7681 measures 4.12:1 on --color-bg and 3.76:1 on --color-bg-light; the
+   * light theme's #7d8590 measures 3.50:1 on #f6f8fa and 3.73:1 on #ffffff. Both
+   * are enforced by the control-boundary oracle in `e2e/nontext.ts`, which
+   * measures the composite each control is really drawn on rather than trusting
+   * this comment.
+   */
+  --color-control-border: #6e7681;
   --color-text: #e6edf3;          /* WCAG AA on #0d1117 → 13.5:1 */
   --color-text-secondary: #adb4be; /* WCAG AA with headroom over tints → ~7:1 on #0d1117 */
   --color-alice: #79c0ff;          /* WCAG AA on #0d1117 → 9.7:1 */
@@ -34,6 +55,7 @@ html[data-theme='light'] {
   --color-bg: #f6f8fa;
   --color-bg-light: #ffffff;
   --color-border: #d0d7de;
+  --color-control-border: #7d8590;
   --color-text: #1f2328;
   --color-text-secondary: #57606a;
   --color-alice: #0969da;
@@ -91,7 +113,15 @@ body {
   line-height: 1.6;
   font-size: 1rem;               /* 16px base — no zoom issues on mobile */
   -webkit-text-size-adjust: 100%;
-  overflow-x: hidden;
+  /*
+   * NO `overflow-x: hidden` HERE. On `body` it propagates to the viewport, so
+   * `documentElement.scrollWidth` can never exceed `clientWidth` — which does
+   * not stop the page overflowing at 380px, it only stops anyone being able to
+   * MEASURE that it does, and takes the reader's ability to scroll to the
+   * clipped content with it. WCAG 1.4.10 is enforced by
+   * `expectNoHorizontalOverflow` in `e2e/gate.ts` instead, and the elements that
+   * genuinely need to scroll sideways say so themselves with `overflow-x: auto`.
+   */
 }
 
 /* ---- Screen-reader only utility ---- */
@@ -190,7 +220,7 @@ a:hover {
   min-height: 2.6rem;
   padding: 0 0.9rem;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-control-border);
   background-color: var(--color-bg-light);
   color: var(--color-text);
   font: inherit;
@@ -437,7 +467,7 @@ a:hover {
   min-height: var(--tap-min);
   padding: 0.75rem;
   background-color: var(--color-bg-light);
-  border: 2px solid var(--color-border);
+  border: 2px solid var(--color-control-border);
   border-radius: 8px;
   color: var(--color-text);
   font-family: var(--font-sans);
@@ -612,7 +642,7 @@ a:hover {
   padding: 0.4rem 0.8rem;
   font-size: 0.8125rem;
   background-color: transparent;
-  border-color: var(--color-border);
+  border-color: var(--color-control-border);
   color: var(--color-text-secondary);
 }
 
@@ -654,7 +684,7 @@ a:hover {
   min-width: 2.1rem;
   min-height: 2.1rem;
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-control-border);
   border-radius: 6px;
   background-color: var(--color-bg);
   color: var(--color-text-secondary);
@@ -1217,7 +1247,7 @@ a:hover {
 .guide-reopen {
   padding: 0.4rem 0.85rem;
   background-color: var(--color-bg-light);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-control-border);
   border-left: 3px solid var(--color-alice);
   border-radius: 8px;
   font: inherit;
@@ -1674,7 +1704,7 @@ a:hover {
 .quiz-option {
   min-height: var(--tap-min);
   padding: 0.6rem 1rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-control-border);
   border-radius: 8px;
   background-color: var(--color-bg-light);
   color: var(--color-text);

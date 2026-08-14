@@ -57,8 +57,10 @@ test('the coach narrates the event and guides the next step', async ({ page }) =
 test('free-form send works too', async ({ page }) => {
   await page.fill('#message-input', 'hello from a real browser');
   await page.click('#send-btn');
+  // "Alice says: " is the off-screen sender attribution inside the bubble; it is
+  // part of the element's text, so an exact-text assertion has to include it.
   await expect(page.locator('#messages .message-bubble').first()).toHaveText(
-    'hello from a real browser'
+    'Alice says: hello from a real browser'
   );
 });
 

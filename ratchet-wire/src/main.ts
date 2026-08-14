@@ -937,8 +937,24 @@ export class RatchetWireApp {
       div.className = `message ${msg.sender.toLowerCase()}`;
       const bubble = document.createElement('div');
       bubble.className = 'message-bubble';
-      bubble.textContent = msg.text;
-      bubble.setAttribute('aria-label', `${msg.sender} says: ${msg.text}`);
+      // The sender is attributed with REAL TEXT, not with `aria-label`.
+      //
+      // This bubble is a plain <div>, so it has no ARIA role, and `aria-label`
+      // is PROHIBITED on a roleless generic element — axe flags it as
+      // `aria-prohibited-attr`, and the practical effect is that the label is
+      // ignored, so the attribution silently did not exist for the readers it
+      // was written for. It also duplicated the bubble's own text, which is the
+      // shape that makes a screen reader read the message twice where the label
+      // is honoured.
+      //
+      // Who sent a message is otherwise carried only by bubble colour and which
+      // side of the thread it sits on, so an off-screen span is what actually
+      // conveys it (and satisfies SC 1.4.1 while it is there).
+      const who = document.createElement('span');
+      who.className = 'sr-only';
+      who.textContent = `${msg.sender} says: `;
+      bubble.appendChild(who);
+      bubble.appendChild(document.createTextNode(msg.text));
       div.appendChild(bubble);
 
       div.appendChild(this.wireInspector(msg));
