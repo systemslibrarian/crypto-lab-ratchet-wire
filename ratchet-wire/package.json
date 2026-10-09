@@ -7,17 +7,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "deploy": "npm run build && gh-pages -d dist",
+    "build": "npm run test:publish-request && tsc && vite build",
+    "deploy": "gh workflow run deploy.yml --repo systemslibrarian/crypto-lab-ratchet-wire --ref main",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:publish-request": "node --test tests/publish-request.node.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.63.0",
-    "gh-pages": "^6.3.0",
     "happy-dom": "^20.14.5",
     "typescript": "^5.3.3",
     "vite": "^8.3.4",
