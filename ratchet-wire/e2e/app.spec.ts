@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
  */
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
+  await page.goto('.');
 });
 
 test('the guided tour advances step-by-step and drives the tabs', async ({ page }) => {
