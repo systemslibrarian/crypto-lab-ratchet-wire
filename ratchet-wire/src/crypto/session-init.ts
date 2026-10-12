@@ -83,6 +83,8 @@ export interface BobPrekeyBundle {
 /** Result of X3DH key agreement: the shared root key (SK). */
 export interface SessionInitResult {
   rootKey: ArrayBuffer;
+  /** Identity-associated data from hybrid setup, bound into every message. */
+  associatedData?: ArrayBuffer;
 }
 
 // X3DH uses a zero-filled salt for the initial KDF (no prior secret to mix in).
@@ -270,6 +272,7 @@ export async function createAliceRatchetState(
 
   return {
     rootKey,
+    associatedData: session.associatedData,
     myDHKeyPair: aliceRatchetKeyPair,
     theirDHPublicKey: bobSignedPreKeyPublic,
     sendingChain: { chainKey, messageNumber: 0 },
@@ -297,6 +300,7 @@ export function createBobRatchetState(
 ): RatchetState {
   return {
     rootKey: session.rootKey,
+    associatedData: session.associatedData,
     myDHKeyPair: bobSignedPreKeyPair,
     theirDHPublicKey: null,
     sendingChain: null,

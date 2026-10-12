@@ -2,7 +2,7 @@
 
 **[Live Demo →](https://systemslibrarian.github.io/crypto-lab-ratchet-wire/)**
 
-An interactive browser-based visualization of the **Double Ratchet Algorithm**, the cryptographic protocol that powers **Signal, WhatsApp, and Google Messages**.
+An interactive browser-based visualization of the **Double Ratchet Algorithm**, a foundation of the Signal Protocol, with selectable classical or real ML-KEM-1024 hybrid session setup.
 
 > ⚠️ **Educational demo — not for production.** This project teaches how the Double
 > Ratchet works. It is unaudited, keeps no persistent state, uses a simplified
@@ -11,12 +11,14 @@ An interactive browser-based visualization of the **Double Ratchet Algorithm**, 
 > genuine end-to-end encryption use a vetted library such as
 > [libsignal](https://github.com/signalapp/libsignal).
 
+See the [root README’s hybrid setup guide and scope](../README.md#hybrid-setup-and-its-limits). The top-of-page controls select the setup; the new hybrid mode follows PQXDH’s composition structure but does not implement Signal’s SPQR, ML-KEM Braid or Triple Ratchet, and is not Signal-compatible.
+
 ## What You'll Learn
 
 Ratchet Wire demonstrates:
 
 - **Forward Secrecy**: Old messages remain secure even if current keys are compromised
-- **Break-in Recovery**: New messages become secure as soon as fresh keys are used
+- **Classical Break-in Recovery**: Fresh uncompromised DH steps can exclude a passive attacker holding an earlier state
 - **Key Ratcheting**: How ephemeral keys derive ever-changing encryption keys
 - **Out-of-Order Delivery**: Handling messages that arrive in unexpected order
 
@@ -25,7 +27,7 @@ Ratchet Wire demonstrates:
 - **Conversation** — send messages between Alice and Bob; each message has a
   collapsible *wire format* inspector showing the header the ratchet actually
   sends (ratchet key, message number Ns, previous-chain-length PN, IV).
-- **X3DH Handshake** — the live signed-pre-key check and the four Diffie-Hellman
+- **Session Handshake** — the live signed-pre-key check and the four Diffie-Hellman
   terms combining via HKDF into the session root key. Plus a one-click
   *"Simulate a tampered pre-key"* showing the man-in-the-middle defense reject it.
 - **Out of Order** — deliver a batch of messages in any order and watch Bob's
@@ -54,7 +56,7 @@ npm run dev
 npm run build
 ```
 
-Output is in `dist/`. The app runs entirely offline with no external dependencies at runtime.
+Output is in `dist/`. Cryptographic operations run locally; the bundled code requires no cryptographic service or remote fonts.
 
 TypeScript 7 defaults ambient `types` to an empty list. The project explicitly includes Node types because the included integration tests import `node:fs`, `node:url`, `node:path` and `node:crypto`; DOM types remain enabled for the browser application. `@types/node` 26.0.0 is declared directly at the version already resolved by the previous lockfile.
 
@@ -88,7 +90,7 @@ The Double Ratchet combines:
 
 ### Simplified vs. Production
 
-**Faithful to the spec here:**
+**Implemented here:**
 - Signed pre-key signature verification — a tampered/substituted pre-key is
   rejected (see the *"Simulate a tampered pre-key"* button in the app)
 - One-time pre-key contributing the 4th DH (`SK = HKDF(DH1‖DH2‖DH3‖DH4)`)
@@ -98,7 +100,7 @@ The Double Ratchet combines:
 [X3DH §2.2](https://signal.org/docs/specifications/x3dh/#cryptographic-notation)
 defines `KDF(KM) = HKDF(F ‖ KM, …)` where `F` is **32 bytes of `0xFF`** for
 X25519 (57 for X448), present for cryptographic domain separation with XEdDSA.
-This demo hashes the bare `DH1‖DH2‖DH3‖DH4` with no `F` prefix. The `SK` it
+Classical mode hashes the bare `DH1‖DH2‖DH3‖DH4` with no `F` prefix. The classical `SK` it
 derives therefore differs from a conformant implementation's over the same keys,
 and **this demo is not interoperable with real X3DH or libsignal**. The omission
 is disclosed in the app's *How It Works* tab and left in place deliberately —
@@ -118,7 +120,8 @@ correcting it would move every pinned test vector and every key the UI displays.
 | Identity Signatures | Ed25519 via @noble/curves | RFC 8032 |
 | Key Derivation | HKDF-SHA256 via Web Crypto | RFC 5869 |
 | Message Encryption | AES-256-GCM via Web Crypto | NIST |
-| Session Init | Authenticated X3DH | Signal X3DH Spec |
+| Session Init | Simplified X3DH or PQXDH-style hybrid | Signal X3DH / PQXDH structure; lab encodings |
+| Hybrid KEM | ML-KEM-1024 via pinned @noble/post-quantum 0.7.1 | FIPS 203 |
 
 > **Why `@noble/curves` for the curves?** Browser Web Crypto only gained X25519
 > (Chrome 133, 2025) and Ed25519 (Chrome 137, 2025) very recently, so relying on
@@ -165,7 +168,12 @@ Tests verify:
 - Full end-to-end encryption with out-of-order delivery
 - A forged message cannot corrupt receiver state; oversized/malformed headers
   are rejected before any key derivation
-- Authenticated X3DH produces matching session keys
+- Classical and hybrid setup produce independently matching session keys
+- Hybrid KDF matches an independent Node HKDF reference including F and parameters
+- Altered KEM ciphertext, identities, nonce and initial AEAD fail without consuming prekeys
+- Accepted one-time prekeys are consumed; last-resort keys remain reusable
+- Hybrid sessions preserve identity-associated data across DH and skipped-message paths
+- An entirely substituted valid bundle is accepted without external identity verification, demonstrating why valid signatures do not authenticate an unpinned identity
 
 ## Key Insights
 

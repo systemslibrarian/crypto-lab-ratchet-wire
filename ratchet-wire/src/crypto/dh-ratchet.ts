@@ -38,6 +38,8 @@ import { ChainState, clearKey } from './symmetric-ratchet';
  */
 export interface RatchetState {
   rootKey: ArrayBuffer;
+  /** Session identity binding, preserved across DH steps and skipped messages. */
+  associatedData?: ArrayBuffer;
   myDHKeyPair: KeyPair;
   theirDHPublicKey: Uint8Array | null;
   sendingChain: ChainState | null;
@@ -102,6 +104,7 @@ export async function dhRatchet(
 
   return {
     rootKey: send.rootKey,
+    associatedData: state.associatedData,
     myDHKeyPair: newDHKeyPair,
     theirDHPublicKey: theirNewPublicKey,
     sendingChain: { chainKey: send.chainKey, messageNumber: 0 },

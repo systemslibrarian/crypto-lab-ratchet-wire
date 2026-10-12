@@ -20,6 +20,12 @@ import {
   BobPrekeyBundle,
   X3DHBreakdown,
 } from './crypto/session-init';
+import {
+  createHybridBobKeys, createHybridBundle, initiateHybridSession, acceptHybridSession,
+  type HybridTrace,
+} from './crypto/hybrid-session';
+
+type SetupMode = 'classical' | 'hybrid';
 
 interface ConversationMessage {
   sender: 'Alice' | 'Bob';
@@ -86,6 +92,8 @@ function wireInfo(message: Message): ConversationMessage['wire'] {
 
 /** Authentication outcome of the X3DH handshake, for display. */
 interface HandshakeInfo {
+  mode: SetupMode;
+  hybrid?: HybridTrace;
   /** True once Bob's signed pre-key signature has been verified. */
   verified: boolean;
   /** Short fingerprint of Bob's Ed25519 identity key. */
@@ -124,9 +132,9 @@ const GUIDE_STEPS: GuideStep[] = [
     text: 'This is a live, end-to-end-encrypted chat between Alice and Bob — real cryptography running in your browser. This guide walks through it in a few short steps. Press Next to begin.',
   },
   {
-    title: 'Step 1 — The handshake (X3DH)',
+    title: 'Step 1 — The session handshake',
     tab: 'x3dh',
-    text: "Before any message is sent, Alice and Bob agree on a shared root key. Here you can see Bob's signed pre-key being verified and four Diffie-Hellman secrets combining (via HKDF) into the root key SK. When you've had a look, press Next.",
+    text: "Before any message is sent, Alice and Bob agree on a shared root key. Here you can see Bob's signed pre-key being verified and four Diffie-Hellman secrets combining (via HKDF) into the root key SK. The hybrid mode also mixes in a real ML-KEM secret; it does not add a continuing post-quantum ratchet. When you've had a look, press Next.",
   },
   {
     title: 'Step 2 — Send a message',
@@ -294,12 +302,29 @@ async function generateBobKeys(): Promise<BobPreSessionKeys> {
 }
 
 /** Run the authenticated X3DH handshake and initialize both ratchets. */
-async function buildSession(): Promise<Session> {
+async function buildSession(mode: SetupMode = 'classical', kind: 'one-time' | 'last-resort' = 'one-time'): Promise<Session> {
   const aliceIK = await generateKeyPair();
   const aliceEK = await generateKeyPair();
   const aliceRatchet = await generateKeyPair();
 
   const bobKeys = await generateBobKeys();
+  if (mode === 'hybrid') {
+    const hybridKeys = createHybridBobKeys(bobKeys, kind);
+    const bundle = await createHybridBundle(hybridKeys);
+    const a = await initiateHybridSession({ identityKeyPair: aliceIK, ephemeralKeyPair: aliceEK }, bundle);
+    const b = await acceptHybridSession(hybridKeys, a.initial);
+    aliceEK.privateKey.fill(0);
+    const alice = await createAliceRatchetState(a.session, aliceRatchet, bobKeys.signedPreKeyPair.publicKey);
+    new Uint8Array(a.session.rootKey).fill(0);
+    return {
+      alice,
+      bob: createBobRatchetState(b, bobKeys.signedPreKeyPair),
+      aliceSkipped: new Map(), bobSkipped: new Map(),
+      handshake: { mode, verified: true, hybrid: a.trace, breakdown: a.trace,
+        bobIdentityFingerprint: await fingerprint(bundle.identitySigningKey),
+        aliceIdentityFingerprint: await fingerprint(aliceIK.publicKey) },
+    };
+  }
   const bobBundle = await createBobPrekeyBundle(bobKeys);
 
   // initiateSessionX3DH verifies Bob's signed pre-key signature and THROWS if
@@ -311,6 +336,7 @@ async function buildSession(): Promise<Session> {
   const bobSession = await acceptSessionX3DH(bobKeys, aliceIK.publicKey, aliceEK.publicKey);
 
   const handshake: HandshakeInfo = {
+    mode,
     verified: true,
     bobIdentityFingerprint: await fingerprint(bobBundle.identitySigningKey),
     aliceIdentityFingerprint: await fingerprint(aliceIK.publicKey),
@@ -347,6 +373,9 @@ async function fingerprint(publicKey: Uint8Array): Promise<string> {
 }
 
 export class RatchetWireApp {
+  private mode: SetupMode = 'classical';
+  private kemKind: 'one-time' | 'last-resort' = 'one-time';
+  private operationBusy = false;
   // Main conversation session.
   private session!: Session;
   private conversation: ConversationMessage[] = [];
@@ -417,7 +446,7 @@ export class RatchetWireApp {
     const form = document.getElementById('message-form') as HTMLFormElement;
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      void this.sendMessage();
+      void this.runOperation(() => this.sendMessage());
     });
 
     // One-click sample to lower the activation energy for first-time visitors.
@@ -427,7 +456,7 @@ export class RatchetWireApp {
       ) as HTMLInputElement | null;
       if (aliceRadio) aliceRadio.checked = true;
       this.messageInput.value = 'Hi Bob! 👋';
-      void this.sendMessage();
+      void this.runOperation(() => this.sendMessage());
     });
 
     this.tabButtons.forEach((btn) => {
@@ -452,11 +481,11 @@ export class RatchetWireApp {
     });
 
     document.getElementById('mitm-demo-btn')?.addEventListener('click', () => {
-      void this.demoTamperedPrekey();
+      void this.runOperation(() => this.demoTamperedPrekey());
     });
 
     document.getElementById('ooo-generate')?.addEventListener('click', () => {
-      void this.oooGenerate();
+      void this.runOperation(() => this.oooGenerate());
     });
     document.getElementById('ooo-reset')?.addEventListener('click', () => {
       this.ooo = null;
@@ -465,21 +494,35 @@ export class RatchetWireApp {
     });
 
     document.getElementById('reset-btn')?.addEventListener('click', () => {
-      void this.resetDemo();
+      void this.runOperation(() => this.resetDemo());
+    });
+    document.getElementById('apply-session')?.addEventListener('click', () => {
+      const mode = (document.getElementById('session-mode') as HTMLSelectElement).value;
+      const kind = (document.getElementById('kem-kind') as HTMLSelectElement).value;
+      if ((mode === 'classical' || mode === 'hybrid') && (kind === 'one-time' || kind === 'last-resort')) {
+        void this.runOperation(() => this.resetDemo(mode, kind));
+      }
+    });
+    document.getElementById('session-mode')?.addEventListener('change', () => {
+      (document.getElementById('kem-kind') as HTMLSelectElement).disabled =
+        (document.getElementById('session-mode') as HTMLSelectElement).value !== 'hybrid';
+    });
+    document.getElementById('kem-tamper-btn')?.addEventListener('click', () => {
+      void this.runOperation(() => this.demoTamperedKem());
     });
 
     document.getElementById('fs-run')?.addEventListener('click', () => {
-      void this.runForwardSecrecy();
+      void this.runOperation(() => this.runForwardSecrecy());
     });
 
     document.getElementById('compromise-btn')?.addEventListener('click', () => {
-      void this.startCompromise();
+      void this.runOperation(() => this.startCompromise());
     });
     document.getElementById('recovery-send-btn')?.addEventListener('click', () => {
-      void this.recoveryAliceSends();
+      void this.runOperation(() => this.recoveryAliceSends());
     });
     document.getElementById('recovery-complete-btn')?.addEventListener('click', () => {
-      void this.recoveryBobReceives();
+      void this.runOperation(() => this.recoveryBobReceives());
     });
 
     document.getElementById('quiz-retry')?.addEventListener('click', () => {
@@ -565,8 +608,12 @@ export class RatchetWireApp {
   // --- Reset -----------------------------------------------------------------
 
   /** Start the whole demo over: a fresh session, cleared UI, guide back to step 1. */
-  private async resetDemo() {
-    this.session = await buildSession();
+  private async resetDemo(mode = this.mode, kind = this.kemKind) {
+    // Publish the replacement only after the entire setup succeeds.
+    const replacement = await buildSession(mode, kind);
+    this.session = replacement;
+    this.mode = mode;
+    this.kemKind = kind;
     this.conversation = [];
     this.coachEvent = null;
     this.seenRatchet = false;
@@ -611,6 +658,33 @@ export class RatchetWireApp {
     this.announce('Demo reset — starting from the beginning.');
   }
 
+  /** Serialize asynchronous exercises so an old operation cannot overwrite a new session. */
+  private async runOperation(work: () => Promise<void>) {
+    if (this.operationBusy) return;
+    this.operationBusy = true;
+    const controls = ['apply-session', 'reset-btn', 'send-btn', 'sample-btn', 'session-mode', 'kem-kind'];
+    const disabled = controls.map(id => {
+      const el = document.getElementById(id) as HTMLButtonElement | HTMLSelectElement;
+      const before = el.disabled;
+      el.disabled = true;
+      return { el, before };
+    });
+    const errorResult = document.getElementById('setup-error')!;
+    errorResult.hidden = true;
+    try { await work(); }
+    catch (error) {
+      errorResult.textContent = `Operation failed: ${(error as Error).message}. The active conversation was retained.`;
+      errorResult.hidden = false;
+      this.announce(errorResult.textContent);
+    }
+    finally {
+      this.operationBusy = false;
+      for (const { el, before } of disabled) el.disabled = before;
+      (document.getElementById('kem-kind') as HTMLSelectElement).disabled =
+        (document.getElementById('session-mode') as HTMLSelectElement).value !== 'hybrid';
+    }
+  }
+
   /** Restore the break-in-recovery simulation to its initial button/state. */
   private resetRecoveryUI() {
     const setDisabled = (id: string, disabled: boolean) => {
@@ -644,7 +718,7 @@ export class RatchetWireApp {
       step(
         bd.signatureVerified ? 'x3dh-ok' : 'x3dh-bad',
         bd.signatureVerified
-          ? "① Verify Bob's signed pre-key signature (Ed25519) — ✓ authenticated"
+          ? "① Verify Bob's prekey signatures (Ed25519) — ✓ valid; identity still needs pinning"
           : "① Verify Bob's signed pre-key signature — ✗ FAILED (would abort)"
       )
     );
@@ -668,6 +742,15 @@ export class RatchetWireApp {
     }
     container.appendChild(grid);
 
+    const hybrid = this.session.handshake.hybrid;
+    if (hybrid) {
+      container.appendChild(step('x3dh-ok', `ML-KEM-1024: Bob publishes ${hybrid.kemPublicBytes} bytes; Alice sends a ${hybrid.kemCiphertextBytes}-byte ciphertext. SS = ${hybrid.kemSecretFingerprint}`));
+      container.appendChild(step('x3dh-sk', `② SK = HKDF(F ‖ DH1 ‖ DH2 ‖ DH3 ‖ DH4 ‖ SS) = ${hybrid.rootKey}. F = 32 bytes of 0xFF; info = RatchetWire-v1_CURVE25519_SHA-256_ML-KEM-1024.`));
+      container.appendChild(step('x3dh-ok', `③ Bob decapsulated independently and authenticated Alice's initial AES-GCM ciphertext with identity-associated data. ${hybrid.kemKind === 'one-time' ? 'One-time curve and KEM private prekeys consumed only after acceptance.' : 'One-time curve prekey consumed; the last-resort KEM prekey is reusable and requires rotation.'}`));
+      container.appendChild(step('x3dh-step', '④ This hybrid SK now seeds the live classical Double Ratchet. New messages bind the session identities and their ratchet headers. No continuing post-quantum secret is introduced by a DH step.'));
+      return;
+    }
+
     // NOTE: no `F` prefix. X3DH §2.2 specifies HKDF over `F ‖ KM` with F = 32
     // bytes of 0xFF; this demo omits it, so SK is not spec-interoperable. The
     // label says so, and the "How It Works" tab explains why it stays that way.
@@ -684,11 +767,46 @@ export class RatchetWireApp {
     const { handshake } = this.session;
     const badge = document.getElementById('handshake-badge');
     const detail = document.getElementById('handshake-detail');
-    if (badge) badge.textContent = handshake.verified ? '🔒 Identity verified' : '⚠️ Unverified';
+    if (badge) badge.textContent = handshake.verified ? '🔒 Prekey signatures valid' : '⚠️ Unverified';
     if (detail) {
       detail.textContent =
-        `Bob's signed pre-key was checked against his Ed25519 identity ` +
-        `(fingerprint ${handshake.bobIdentityFingerprint}).`;
+        `Bob's ${handshake.mode === 'hybrid' ? 'curve and ML-KEM prekeys were' : 'curve prekey was'} checked against the supplied Ed25519 identity ` +
+        `(fingerprint ${handshake.bobIdentityFingerprint}). Identity not pinned: compare this fingerprint through a trusted channel.`;
+    }
+    const hybrid = handshake.mode === 'hybrid';
+    document.getElementById('kem-tamper-btn')!.hidden = !hybrid;
+    const kemResult = document.getElementById('kem-tamper-result')!;
+    kemResult.hidden = true;
+    kemResult.textContent = '';
+    document.getElementById('setup-status')!.textContent = hybrid
+      ? `Active: PQXDH-style ML-KEM-1024 setup (${this.kemKind} KEM prekey) + classical Double Ratchet. Initial AEAD accepted. SPQR / Triple Ratchet is not running.`
+      : 'Active: simplified classical X3DH + Double Ratchet. No post-quantum secret is used.';
+    document.getElementById('handshake-title')!.textContent = hybrid ? 'Hybrid Session Setup — PQXDH-style' : 'Simplified X3DH Session Setup';
+    document.getElementById('handshake-description')!.textContent = hybrid
+      ? 'Both signed prekeys are checked before encapsulation. Four real X25519 DH secrets and one real ML-KEM-1024 secret feed a prefixed, domain-separated HKDF. Bob confirms the secret by decrypting the initial AES-GCM ciphertext before consuming one-time keys. These are this session’s live values.'
+      : 'Alice checks Bob’s signed curve prekey, then combines four real Diffie-Hellman secrets with the legacy demo KDF. Bob derives the same SK independently. These are this session’s live values.';
+  }
+
+  private async demoTamperedKem() {
+    const result = document.getElementById('kem-tamper-result')!;
+    const keys = createHybridBobKeys(await generateBobKeys());
+    const bundle = await createHybridBundle(keys);
+    const alice = { identityKeyPair: await generateKeyPair(), ephemeralKeyPair: await generateKeyPair() };
+    const a = await initiateHybridSession(alice, bundle);
+    const ct = a.initial.kemCiphertext.slice();
+    ct[0] ^= 1;
+    try {
+      await acceptHybridSession(keys, { ...a.initial, kemCiphertext: ct });
+      result.textContent = 'Unexpected: altered ciphertext accepted.';
+    } catch {
+      result.textContent = !keys.kemConsumed && !keys.curveConsumed
+        ? 'Blocked: the altered ML-KEM ciphertext produced a different secret and the initial AES-GCM authentication failed. One-time prekeys were retained; the conversation was unchanged.'
+        : 'Unexpected: a failed setup consumed a prekey.';
+    } finally {
+      new Uint8Array(a.session.rootKey).fill(0);
+      keys.kem.secretKey.fill(0);
+      alice.ephemeralKeyPair.privateKey.fill(0);
+      result.hidden = false;
     }
   }
 
@@ -711,6 +829,14 @@ export class RatchetWireApp {
       const aliceIK = await generateKeyPair();
       const aliceEK = await generateKeyPair();
       const bobKeys = await generateBobKeys();
+      if (this.mode === 'hybrid') {
+        const bundle = await createHybridBundle(createHybridBobKeys(bobKeys));
+        const forgedSig = bundle.kemSignature.slice(0);
+        new Uint8Array(forgedSig)[0] ^= 1;
+        await initiateHybridSession({ identityKeyPair: aliceIK, ephemeralKeyPair: aliceEK }, { ...bundle, kemSignature: forgedSig });
+        show('Unexpected: the tampered ML-KEM prekey was accepted.', false);
+        return;
+      }
       const bundle = await createBobPrekeyBundle(bobKeys);
 
       // A man-in-the-middle can swap Bob's pre-key but cannot forge his identity
@@ -1170,7 +1296,7 @@ export class RatchetWireApp {
 
   /** Build a fresh session and pre-encrypt a batch of Alice→Bob messages. */
   private async oooGenerate() {
-    const session = await buildSession();
+    const session = await buildSession(this.mode, this.kemKind);
     const pending: NonNullable<typeof this.ooo>['pending'] = [];
     for (let i = 0; i < 5; i++) {
       const text = `Message ${i}`;
@@ -1254,7 +1380,7 @@ export class RatchetWireApp {
         btn.type = 'button';
         btn.className = 'btn btn-success ooo-deliver';
         btn.textContent = 'Deliver';
-        btn.addEventListener('click', () => void this.oooDeliver(item.index));
+        btn.addEventListener('click', () => void this.runOperation(() => this.oooDeliver(item.index)));
         card.appendChild(btn);
       }
       pendingEl.appendChild(card);
@@ -1276,7 +1402,7 @@ export class RatchetWireApp {
 
   /** Derive a real chain of message keys, then visualize what a stolen chain key exposes. */
   private async runForwardSecrecy() {
-    const session = await buildSession();
+    const session = await buildSession(this.mode, this.kemKind);
     // Use Alice's real initial sending chain key as CK[0].
     const messageKeyFps = await chainMessageKeyFps(
       session.alice.sendingChain!.chainKey,
@@ -1379,7 +1505,7 @@ export class RatchetWireApp {
     // Fresh session, then a round trip so the last move was Bob -> Alice. This
     // leaves Alice holding a ratchet key Bob has not seen yet, which guarantees
     // the recovery ratchet fires in step 3.
-    this.recovery = await buildSession();
+    this.recovery = await buildSession(this.mode, this.kemKind);
     await this.recoveryDeliver('Alice', '🔑 Session handshake');
     await this.recoveryDeliver('Bob', '🔑 Acknowledged');
 

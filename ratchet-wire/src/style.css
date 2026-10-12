@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inconsolata:wght@400;700&display=swap');
+/* Use the declared local font fallbacks; no remote font fetch is required. */
 
 :root {
   --color-bg: #0d1117;
@@ -1926,3 +1926,15 @@ a:hover {
     padding-bottom: var(--safe-bottom);
   }
 }
+
+/* Session setup controls share the lab's control and focus contrast tokens. */
+.session-controls { padding: 1.25rem; margin-bottom: 1.25rem; background: var(--color-bg-light); border: 1px solid var(--color-border); border-radius: 8px; }
+.session-controls h2 { font-size: 1.15rem; margin-bottom: .5rem; }
+.session-controls p { margin-top: .75rem; line-height: 1.6; }
+.session-options { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; margin-top: 1rem; }
+.session-options label { display: flex; flex: 1 1 12rem; flex-direction: column; gap: .4rem; min-width: 0; }
+.session-options select { width: 100%; min-width: 0; min-height: 44px; font: inherit; color: var(--color-text); background: var(--color-bg-light); border: 1px solid var(--color-control-border); border-radius: 6px; padding: .6rem; }
+.session-options select:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
+.session-options select:disabled { opacity: .65; }
+#setup-status { color: var(--color-text); }
+#kem-tamper-result { margin-top: .75rem; }

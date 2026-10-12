@@ -25,7 +25,7 @@ test('the guided tour advances step-by-step and drives the tabs', async ({ page 
 });
 
 test('boots with an authenticated handshake', async ({ page }) => {
-  await expect(page.locator('#handshake-badge')).toContainText('Identity verified');
+  await expect(page.locator('#handshake-badge')).toContainText('Prekey signatures valid');
   await expect(page.locator('#handshake-detail')).toContainText(/[0-9A-F]{2}( [0-9A-F]{2}){7}/);
 });
 

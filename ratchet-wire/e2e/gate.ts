@@ -284,7 +284,7 @@ export async function boot(page: Page, theme: 'dark' | 'light'): Promise<void> {
   await expect(page.locator('main#main-content')).toHaveCount(1)
 
   // ── The session is real and both ratchets initialised ───────────────────
-  await expect(page.locator('#handshake-badge')).toContainText('Identity verified')
+  await expect(page.locator('#handshake-badge')).toContainText('Prekey signatures valid')
   await expect(page.locator('#handshake-detail')).toContainText(/[0-9A-F]{2}( [0-9A-F]{2}){7}/)
   await expect(page.locator('#x3dh-breakdown .x3dh-formula')).toHaveCount(4)
   await expect(page.locator('#x3dh-breakdown .x3dh-sk')).toContainText('SK = HKDF')
@@ -690,7 +690,7 @@ const TABS = ['conversation', 'x3dh', 'ooo', 'state', 'fs', 'compromise', 'about
 /** Each guided-tour step's title and the tab it drives, asserted rather than assumed. */
 const GUIDE_STEPS: ReadonlyArray<{ title: string; tab: string }> = [
   { title: 'Welcome', tab: 'conversation' },
-  { title: 'Step 1 — The handshake (X3DH)', tab: 'x3dh' },
+  { title: 'Step 1 — The session handshake', tab: 'x3dh' },
   { title: 'Step 2 — Send a message', tab: 'conversation' },
   { title: 'Step 3 — The DH ratchet (break-in recovery)', tab: 'conversation' },
   { title: 'Step 4 — The symmetric ratchet (forward secrecy)', tab: 'conversation' },
@@ -920,7 +920,7 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
 
   // ── About: two scrolling comparison tables ──────────────────────────────
   await page.click('#tab-about')
-  await expect(page.locator('#about .comparison-table')).toHaveCount(2)
+  await expect(page.locator('#about .comparison-table')).toHaveCount(3)
   await scanAt('about tab with both comparison tables')
 
   await page.locator('#about a').first().hover()

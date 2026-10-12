@@ -87,7 +87,7 @@ describe('App integration (DOM smoke test)', () => {
 
     const badge = document.getElementById('handshake-badge')!;
     const detail = document.getElementById('handshake-detail')!;
-    expect(badge.textContent).toContain('Identity verified');
+    expect(badge.textContent).toContain('Prekey signatures valid');
     // Fingerprint is rendered as space-separated hex byte pairs.
     expect(detail.textContent).toMatch(/[0-9A-F]{2}( [0-9A-F]{2}){7}/);
 

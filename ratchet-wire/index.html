@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d1117" />
-    <meta name="description" content="Interactive visualization of the Double Ratchet Algorithm used in Signal, WhatsApp, and Google Messages." />
+    <meta name="description" content="Explore the Double Ratchet with classical X3DH or real ML-KEM-1024 hybrid session setup, and learn how Signal adds a continuing post-quantum ratchet." />
     <script>
       // Dark is the only theme. Pin it before first paint, and overwrite any
       // 'light' a visitor stored back when the header carried a theme toggle.
@@ -168,7 +168,7 @@
         <div class="cl-hero">
           <div class="cl-hero-main">
             <h1 class="cl-hero-title">Ratchet Wire</h1>
-            <p class="cl-hero-sub">Signal Double Ratchet · Simplified X3DH</p>
+            <p class="cl-hero-sub">Double Ratchet · Classical and hybrid session setup</p>
             <p class="cl-hero-desc">
               Send messages over an untrusted channel and watch the symmetric and
               DH ratchets advance the keys step by step, live.
@@ -186,9 +186,9 @@
           <div class="cl-hero-why">
             <span class="cl-hero-why-label">WHY IT MATTERS</span>
             <p class="cl-hero-why-text">
-              This is the engine behind Signal, WhatsApp, and Google Messages.
-              Forward secrecy means a stolen key can't decrypt past messages, and
-              break-in recovery means security heals itself after a compromise.
+              See how a conversation replaces its encryption keys. Compare classical
+              setup with a real post-quantum KEM, then learn why current Signal also
+              uses a continuing post-quantum ratchet.
             </p>
           </div>
         </div>
@@ -216,7 +216,7 @@
               aria-controls="x3dh"
               tabindex="-1"
             >
-              X3DH Handshake
+              Session Handshake
             </button>
             <button
               class="tab-btn"
@@ -288,6 +288,30 @@
         </nav>
 
         <main id="main-content">
+          <section class="session-controls" aria-labelledby="setup-heading">
+            <h2 id="setup-heading">Choose the session setup</h2>
+            <p>Changing setup starts a fresh conversation and resets the exercises.</p>
+            <div class="session-options">
+              <label for="session-mode">Setup
+                <select id="session-mode" aria-describedby="setup-status">
+                  <option value="classical">Classical X3DH (simplified)</option>
+                  <option value="hybrid">Hybrid PQXDH-style (ML-KEM-1024)</option>
+                </select>
+              </label>
+              <label for="kem-kind">KEM prekey
+                <select id="kem-kind" disabled>
+                  <option value="one-time">One-time</option>
+                  <option value="last-resort">Last-resort fallback</option>
+                </select>
+              </label>
+              <button id="apply-session" type="button" class="btn btn-primary">Start selected setup</button>
+            </div>
+            <p id="setup-status" role="status">Preparing classical setup…</p>
+            <p id="setup-error" role="alert" hidden></p>
+            <p class="panel-desc">Both modes use the classical Double Ratchet for messages.
+              The hybrid setup is an educational implementation with separate Ed25519 and
+              X25519 identities; it is not compatible with Signal clients.</p>
+          </section>
           <!-- Guided, step-by-step tour that drives the tabs -->
           <section class="guide" id="guide" aria-label="Guided tour">
             <button class="guide-reopen" id="guide-reopen" type="button" hidden>
@@ -317,7 +341,7 @@
           >
             <section class="handshake-banner" aria-label="Session handshake status">
               <div class="handshake-headline">
-                <span class="handshake-badge" id="handshake-badge">🔒 Identity verified</span>
+                <span class="handshake-badge" id="handshake-badge">Preparing prekey verification…</span>
                 <span class="handshake-detail" id="handshake-detail"></span>
               </div>
               <div class="handshake-actions">
@@ -468,8 +492,8 @@
             hidden
           >
             <div class="x3dh-panel">
-              <h3>X3DH — Authenticated Session Setup</h3>
-              <p class="panel-desc">
+              <h3 id="handshake-title">Simplified X3DH Session Setup</h3>
+              <p class="panel-desc" id="handshake-description">
                 Before a single message is sent, Alice derives a shared root key
                 (<strong>SK</strong>) from Bob's published pre-key bundle. She first verifies the
                 signed pre-key, then combines four Diffie-Hellman secrets. Because every DH term
@@ -478,6 +502,8 @@
               </p>
 
               <div id="x3dh-breakdown" class="x3dh-breakdown" aria-live="polite"></div>
+              <button id="kem-tamper-btn" type="button" class="btn btn-ghost" hidden>Alter the ML-KEM ciphertext</button>
+              <p id="kem-tamper-result" class="mitm-result" role="status" hidden></p>
 
               <section class="x3dh-legend" aria-label="What each Diffie-Hellman term provides">
                 <h4>Why four DH terms?</h4>
@@ -678,7 +704,9 @@
             <div class="compromise-panel">
               <h3>Break-In Recovery Simulation</h3>
               <p class="panel-desc">
-                Demonstrates how the Double Ratchet recovers from key compromise.
+                Demonstrates classical DH recovery from key compromise, in either setup mode.
+                The attacker loses access and does not have a quantum computer that can solve X25519.
+                A hybrid handshake alone does not add quantum post-compromise healing.
               </p>
 
               <div class="compromise-sim" aria-live="polite">
@@ -790,13 +818,39 @@
               <section>
                 <h3>Overview</h3>
                 <p>
-                  The Double Ratchet (also called the "X3DH + Double Ratchet" protocol) is used by
-                  <strong>Signal, WhatsApp, and Google Messages</strong> to provide:
+                  The classical Double Ratchet is a foundation of the Signal Protocol.
+                  Session setup and continuing message-key updates are separate stages. This lab teaches:
                 </p>
                 <ul>
                   <li><strong>Forward Secrecy:</strong> Old messages stay secure even if keys leak</li>
                   <li><strong>Break-in Recovery:</strong> New messages become secure after key changes</li>
                 </ul>
+              </section>
+
+              <section id="signal-today" aria-labelledby="signal-today-heading">
+                <h3 id="signal-today-heading">How this compares with current Signal</h3>
+                <p>Signal introduced PQXDH for session establishment in 2023, then announced
+                  <a href="https://signal.org/blog/spqr/" target="_blank" rel="noopener noreferrer">SPQR and the Triple Ratchet on 2 October 2025<span class="sr-only"> (opens in new tab)</span></a>.
+                  The <a href="https://signal.org/docs/specifications/doubleratchet/" target="_blank" rel="noopener noreferrer">ratchet specification, revision 4 (4 November 2025)<span class="sr-only"> (opens in new tab)</span></a>,
+                  describes the classical Double Ratchet (§3), SPQR (§5), the Triple Ratchet (§6), and integration with PQXDH (§7.1).</p>
+                <div class="comparison-table" tabindex="0" role="region" aria-label="Session setup and continuing ratchet comparison">
+                  <table>
+                    <caption>What runs here, and what Signal adds</caption>
+                    <thead><tr><th scope="col">Construction</th><th scope="col">At session setup</th><th scope="col">During the conversation</th></tr></thead>
+                    <tbody>
+                      <tr><th scope="row">Classical mode — runs here</th><td>Four X25519 DH secrets, legacy demo KDF</td><td>Symmetric chains and fresh X25519 DH steps</td></tr>
+                      <tr><th scope="row">Hybrid mode — runs here</th><td>Four DH secrets + real ML-KEM-1024 secret; initial AEAD confirmation</td><td>The same classical Double Ratchet; no new post-quantum secrets</td></tr>
+                      <tr><th scope="row">Triple Ratchet — reading only</th><td>PQXDH seed expanded into separate classical and SCKA roots</td><td>Double Ratchet and SPQR run in parallel; both message keys are combined before encryption</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p>A hybrid handshake addresses passive harvest-now/decrypt-later attacks under the KEM and symmetric-crypto assumptions. It does not provide post-quantum authentication or quantum post-compromise healing after the session state is stolen. The recovery exercise here shows <strong>classical DH recovery only</strong>, in either setup mode.</p>
+                <p>SPQR uses a sparse continuous key agreement, recommended as ML-KEM Braid, to introduce fresh post-quantum secrets across later messages. Epoch coordination, loss handling and key mixing are essential; this lab does not implement them.</p>
+                <p>For the handshake’s individual steps and attack models, see
+                  <a href="https://systemslibrarian.github.io/crypto-lab-pqxdh-wire/">PQXDH Wire</a>.
+                  The hybrid mode here follows the structure of
+                  <a href="https://signal.org/docs/specifications/pqxdh/" target="_blank" rel="noopener noreferrer">PQXDH revision 3 (updated 23 January 2024)<span class="sr-only"> (opens in new tab)</span></a>
+                  with lab-specific encodings and signatures. <a href="https://csrc.nist.gov/pubs/fips/203/final" target="_blank" rel="noopener noreferrer">ML-KEM-1024 is standardized in FIPS 203 (13 August 2024)<span class="sr-only"> (opens in new tab)</span></a>; it is not a byte-compatible replacement for older Kyber ciphertexts.</p>
               </section>
 
               <section>
@@ -896,16 +950,16 @@ root_new ‖ chain_key = HKDF(
               </section>
 
               <section>
-                <h3>Authenticated X3DH</h3>
+                <h3>Classical setup — simplified X3DH</h3>
                 <p>
-                  Session setup runs the full <strong>X3DH</strong> ("Extended Triple Diffie-Hellman")
-                  key agreement and <strong>authenticates</strong> it:
+                  Classical mode models <strong>X3DH</strong> ("Extended Triple Diffie-Hellman")
+                  using separate signing and DH identity keys:
                 </p>
                 <ul>
                   <li>
                     <strong>Signed pre-key:</strong> Bob signs his pre-key with his long-term
                     <strong>Ed25519 identity key</strong>; Alice verifies that signature before
-                    deriving anything. A man-in-the-middle who swaps the pre-key is rejected — try the
+                    deriving anything. A substituted prekey with an invalid signature is rejected — try the
                     <em>"Simulate a tampered pre-key"</em> button on the Conversation tab.
                   </li>
                   <li>
@@ -920,7 +974,7 @@ SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
 
                 <aside class="edu-disclaimer" role="note">
                   <p>
-                    <strong>Deviation from the spec — the <code>F</code> prefix is omitted.</strong>
+                    <strong>Classical-mode deviation — the <code>F</code> prefix is omitted.</strong>
                     Real X3DH does not hash the DH outputs bare. <a href="https://signal.org/docs/specifications/x3dh/#cryptographic-notation" target="_blank" rel="noopener noreferrer">X3DH §2.2<span class="sr-only">(opens in new tab)</span></a>
                     defines <code>KDF(KM) = HKDF(F ‖ KM, …)</code>, where <code>F</code> is
                     <strong>32 bytes of 0xFF</strong> for X25519 (57 bytes for X448). <code>F</code> is
@@ -928,17 +982,17 @@ SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
                     <code>HKDF(DH1 ‖ DH2 ‖ DH3 ‖ DH4)</code> with <em>no</em> <code>F</code> prefix, so
                     the shared secret shown above is <strong>not</strong> the secret a spec-conformant
                     X3DH would derive from the same keys — this demo is
-                    <strong>not interoperable with real X3DH or libsignal</strong>. The line above, and
-                    every key the Conversation tab displays, reflects the demo's KDF, not Signal's.
+                    <strong>not interoperable with real X3DH or libsignal</strong>. Classical-mode keys reflect this legacy demo KDF. Hybrid mode includes the
+                    <code>F</code> prefix and a separate parameter-specific label.
                   </p>
                 </aside>
               </section>
 
               <section>
                 <h3>This Demo vs. Production</h3>
-                <p><strong>Faithful to the spec here:</strong></p>
+                <p><strong>Implemented here:</strong></p>
                 <ul>
-                  <li>Authenticated X3DH (signed pre-key signature + one-time pre-key)</li>
+                  <li>Classical X3DH-style or hybrid PQXDH-style session setup with checked prekey signatures</li>
                   <li>Double Ratchet with out-of-order handling and skipped-key bounds</li>
                   <li>Low-order public keys rejected; message headers bound as AEAD associated data</li>
                 </ul>
@@ -946,7 +1000,7 @@ SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
                 <p><strong>Still simplified (for the demo):</strong></p>
                 <ul>
                   <li>
-                    The X3DH KDF <strong>omits the <code>F</code> prefix</strong> (32 bytes of 0xFF)
+                    The classical-mode X3DH KDF <strong>omits the <code>F</code> prefix</strong> (32 bytes of 0xFF)
                     that X3DH §2.2 requires, so derived secrets do not match a conformant
                     implementation — see the note above
                   </li>
@@ -954,7 +1008,8 @@ SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
                     Identity uses a separate Ed25519 signing key + X25519 DH key, where production
                     Signal uses a single key via <strong>XEdDSA</strong> (not exposed by Web Crypto)
                   </li>
-                  <li>No pre-key server, prekey rotation, or OPK-exhaustion handling</li>
+                  <li>No pre-key server, pool exhaustion or scheduled rotation. Hybrid mode consumes one-time private prekeys after initial AEAD acceptance; its last-resort KEM option retains the KEM key for reuse.</li>
+                  <li>No XEdDSA, Signal wire format, SPQR, ML-KEM Braid or Triple Ratchet; no quantum recovery demonstration</li>
                   <li>In-memory state only (no persistence)</li>
                 </ul>
               </section>

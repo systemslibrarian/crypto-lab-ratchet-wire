@@ -70,7 +70,7 @@ export async function encrypt(
     previousChainLength: state.previousSendingChainLength,
   };
 
-  const { ciphertext, iv } = await encryptAESGCM(plaintext, messageKey.key, headerAad(header));
+  const { ciphertext, iv } = await encryptAESGCM(plaintext, messageKey.key, headerAad(header, state.associatedData));
   clearKey(messageKey.key);
 
   return {
@@ -101,7 +101,7 @@ export async function decrypt(
 
   const senderPubB64 = message.header.dhPublicKey;
   const updatedSkipped: SkippedKeys = new Map(skippedKeys);
-  const aad = headerAad(message.header);
+  const aad = headerAad(message.header, state.associatedData);
 
   // 1. A key we skipped earlier? Use it without touching the ratchet.
   const skippedId = skippedKeyId(senderPubB64, message.header.messageNumber);
@@ -238,10 +238,15 @@ const skippedKeyId = (senderPubB64: string, messageNumber: number): string =>
   `${senderPubB64}:${messageNumber}`;
 
 /** Canonical associated data for a header (must match on encrypt and decrypt). */
-function headerAad(header: Message['header']): ArrayBuffer {
-  return new TextEncoder().encode(
+function headerAad(header: Message['header'], sessionAd?: ArrayBuffer): ArrayBuffer {
+  const headerBytes = new TextEncoder().encode(
     `${header.dhPublicKey}|${header.messageNumber}|${header.previousChainLength}`
-  ).buffer;
+  );
+  if (!sessionAd) return headerBytes.buffer;
+  const aad = new Uint8Array(sessionAd.byteLength + headerBytes.length);
+  aad.set(new Uint8Array(sessionAd));
+  aad.set(headerBytes, sessionAd.byteLength);
+  return aad.buffer;
 }
 
 /** Encrypt with AES-256-GCM, binding `aad` for authentication. */

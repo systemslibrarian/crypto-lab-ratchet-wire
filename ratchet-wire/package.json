@@ -26,6 +26,7 @@
     "@types/node": "26.0.0"
   },
   "dependencies": {
-    "@noble/curves": "^2.4.0"
+    "@noble/curves": "^2.4.0",
+    "@noble/post-quantum": "0.7.1"
   }
 }
