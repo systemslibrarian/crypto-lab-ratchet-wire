@@ -27,7 +27,7 @@ The demo lets you switch between Conversation, X3DH Handshake, Out of Order, Rat
 
 ## Real-World Usage
 
-- **Signal** — the Double Ratchet plus X3DH originated in and powers the Signal messenger's end-to-end encryption.
+- **Signal** — X3DH and the classical Double Ratchet are historical foundations of the Signal Protocol and the constructions this lab teaches. Signal added PQXDH for session establishment, then announced [SPQR and the Triple Ratchet](https://signal.org/blog/spqr/) on 2 October 2025, combining a continuing post-quantum ratchet with the Double Ratchet. See the [current ratchet specification](https://signal.org/docs/specifications/doubleratchet/) and [PQXDH Wire](https://systemslibrarian.github.io/crypto-lab-pqxdh-wire/) for that distinction. This lab does not implement PQXDH, SPQR, or the Triple Ratchet, and does not model their quantum post-compromise healing.
 - **WhatsApp** — uses the Signal Protocol for end-to-end encrypted messages and calls across billions of users.
 - **Google Messages (RCS)** and **Facebook Messenger / Messenger secret conversations** — adopt the Signal Protocol's Double Ratchet for their end-to-end encryption.
 - **Matrix (Olm/Megolm)** — uses a Double Ratchet-derived construction for encrypted Matrix conversations.
