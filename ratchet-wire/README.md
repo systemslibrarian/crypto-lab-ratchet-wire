@@ -58,7 +58,7 @@ Output is in `dist/`. The app runs entirely offline with no external dependencie
 
 TypeScript 7 defaults ambient `types` to an empty list. The project explicitly includes Node types because the included integration tests import `node:fs`, `node:url`, `node:path` and `node:crypto`; DOM types remain enabled for the browser application. `@types/node` 26.0.0 is declared directly at the version already resolved by the previous lockfile.
 
-The build also runs `npm run test:compiler-config`: real compiler controls retain integration-test coverage, compile Node and DOM declarations together, reject the existing Node imports when ambient types are removed, and reject an implicit-any fixture. These are compile-only synthetic inputs; no application or cryptographic behavior is changed.
+The build also runs `npm run test:compiler-config`: real compiler controls retain integration-test coverage, compile Node and DOM declarations together, reject the existing Node imports when ambient types are removed, and reject an implicit-any fixture in ordinary and forced-colour environments. Probe diagnostics use `--pretty false`, so ANSI styling cannot change their assertions. These are compile-only synthetic inputs; no application or cryptographic behavior is changed.
 
 ## How It Works
 

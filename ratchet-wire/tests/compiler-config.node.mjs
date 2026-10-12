@@ -7,14 +7,18 @@ import test from 'node:test';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tsc = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc');
-const run = (args) => {
-  const result = spawnSync(tsc, args, { cwd: root, encoding: 'utf8', timeout: 120_000 });
+const run = (args, environment = process.env) => {
+  // Playwright forces colour when it launches the build as its web server.
+  // Keep probe diagnostics parseable without changing any compiler checks.
+  const result = spawnSync(tsc, [...args, '--pretty', 'false'], {
+    cwd: root, env: environment, encoding: 'utf8', timeout: 120_000,
+  });
   assert.ifError(result.error);
   assert.equal(result.signal, null, 'Compiler must finish, not be terminated');
   return result;
 };
 
-const fixture = (options, source, check) => {
+const fixture = (options, source, check, environment) => {
   const directory = mkdtempSync(path.join(root, '.compiler-guard-'));
   try {
     const config = {
@@ -28,7 +32,7 @@ const fixture = (options, source, check) => {
     }
     const filename = path.join(directory, 'tsconfig.json');
     writeFileSync(filename, JSON.stringify(config));
-    check(run(['--project', filename, '--noEmit']));
+    check(run(['--project', filename, '--noEmit'], environment));
   } finally {
     rmSync(directory, { recursive: true });
   }
@@ -75,4 +79,13 @@ test('an implicit-any fixture remains a real compiler error', () => {
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stdout, /TS7006: Parameter 'value' implicitly has an 'any' type/);
   });
+});
+
+test('forced-colour web-server builds retain the real compiler error control', () => {
+  const environment = { ...process.env, FORCE_COLOR: '1' };
+  delete environment.NO_COLOR;
+  fixture({}, 'export function unsupported(value) { return value; }', result => {
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /TS7006: Parameter 'value' implicitly has an 'any' type/);
+  }, environment);
 });
