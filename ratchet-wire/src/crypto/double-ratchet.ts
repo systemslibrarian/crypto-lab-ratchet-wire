@@ -16,6 +16,9 @@ import { exportPublicKeyRaw, importPublicKeyRaw } from './x25519';
 
 /** Maximum number of skipped message keys to retain (DoS guard). */
 const MAX_SKIP = 1000;
+/** Bound untrusted wire ciphertexts before decoding or doing ratchet work. */
+const MAX_PLAINTEXT_BYTES = 1024 * 1024;
+const MAX_CIPHERTEXT_BYTES = MAX_PLAINTEXT_BYTES + 16;
 
 /** A wire message: an authenticated header plus AES-256-GCM ciphertext. */
 export interface Message {
@@ -57,6 +60,12 @@ export async function encrypt(
       'No sending chain yet — the responder must receive the first message before sending.'
     );
   }
+  if (
+    plaintext.length > MAX_PLAINTEXT_BYTES ||
+    new TextEncoder().encode(plaintext).byteLength > MAX_PLAINTEXT_BYTES
+  ) {
+    throw new Error(`Message is too large (maximum ${MAX_PLAINTEXT_BYTES} UTF-8 bytes).`);
+  }
 
   const { newState: advancedChain, messageKey } = await ratchetStep(state.sendingChain);
 
@@ -70,13 +79,19 @@ export async function encrypt(
     previousChainLength: state.previousSendingChainLength,
   };
 
-  const { ciphertext, iv } = await encryptAESGCM(plaintext, messageKey.key, headerAad(header, state.associatedData));
-  clearKey(messageKey.key);
-
-  return {
-    message: { header, ciphertext, iv },
-    newState: { ...state, sendingChain: advancedChain },
-  };
+  try {
+    const { ciphertext, iv } = await encryptAESGCM(
+      plaintext,
+      messageKey.key,
+      headerAad(header, state.associatedData)
+    );
+    return {
+      message: { header, ciphertext, iv },
+      newState: { ...state, sendingChain: advancedChain },
+    };
+  } finally {
+    clearKey(messageKey.key);
+  }
 }
 
 /**
@@ -97,7 +112,9 @@ export async function decrypt(
   message: Message,
   skippedKeys: SkippedKeys = new Map()
 ): Promise<{ plaintext: string; newState: RatchetState; skippedKeys: SkippedKeys }> {
-  validateHeader(message.header);
+  const senderPubRaw = validateHeader(message.header);
+  validateBase64Field(message.iv, 'IV', 12, 12);
+  validateBase64Field(message.ciphertext, 'ciphertext', 16, MAX_CIPHERTEXT_BYTES);
 
   const senderPubB64 = message.header.dhPublicKey;
   const updatedSkipped: SkippedKeys = new Map(skippedKeys);
@@ -130,10 +147,6 @@ export async function decrypt(
         updatedSkipped
       );
     }
-    const senderPubRaw = decodeBase64(senderPubB64, 'DH public key');
-    if (senderPubRaw.byteLength !== 32) {
-      throw new Error('Malformed message header: DH public key must be 32 bytes.');
-    }
     workingState = await dhRatchet(workingState, await importPublicKeyRaw(senderPubRaw));
   }
 
@@ -152,14 +165,16 @@ export async function decrypt(
 
   // 4. Derive the target message key and advance the chain past it.
   const { newState: advancedChain, messageKey } = await ratchetStep(chain);
-  const plaintext = await decryptAESGCM(message.ciphertext, message.iv, messageKey.key, aad);
-  clearKey(messageKey.key);
-
-  return {
-    plaintext,
-    newState: { ...workingState, receivingChain: advancedChain },
-    skippedKeys: updatedSkipped,
-  };
+  try {
+    const plaintext = await decryptAESGCM(message.ciphertext, message.iv, messageKey.key, aad);
+    return {
+      plaintext,
+      newState: { ...workingState, receivingChain: advancedChain },
+      skippedKeys: updatedSkipped,
+    };
+  } finally {
+    clearKey(messageKey.key);
+  }
 }
 
 /**
@@ -186,19 +201,51 @@ async function skipMessageKeys(
  * Reject a malformed wire header before it reaches the ratchet logic.
  *
  * `messageNumber` and `previousChainLength` arrive as untrusted JSON numbers.
- * A negative, fractional, `NaN`, or `Infinity` value would otherwise slip past
+ * A negative, fractional, unsafe, `NaN`, or `Infinity` value would otherwise slip past
  * the {@link assertSkipWithinBounds} arithmetic and be silently mishandled
  * (e.g. `NaN` makes every `<` comparison false, skipping the loop and deriving
  * the wrong key). Fail fast with a clear error instead.
  */
-function validateHeader(header: Message['header']): void {
+function validateHeader(header: Message['header']): ArrayBuffer {
   if (typeof header.dhPublicKey !== 'string' || header.dhPublicKey.length === 0) {
     throw new Error('Malformed message header: missing DH public key.');
   }
-  const isCount = (n: number): boolean => Number.isInteger(n) && n >= 0;
+  const isCount = (n: number): boolean => Number.isSafeInteger(n) && n >= 0;
   if (!isCount(header.messageNumber) || !isCount(header.previousChainLength)) {
-    throw new Error('Malformed message header: message numbers must be non-negative integers.');
+    throw new Error('Malformed message header: message numbers must be non-negative safe integers.');
   }
+  return validateBase64Field(header.dhPublicKey, 'DH public key', 32, 32);
+}
+
+/** Validate base64 syntax and decoded size before allocating untrusted input. */
+function validateBase64Field(
+  value: string,
+  label: string,
+  minBytes: number,
+  maxBytes: number
+): ArrayBuffer {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`Malformed message: ${label} is missing.`);
+  }
+  const maxEncodedLength = Math.ceil(maxBytes / 3) * 4;
+  if (value.length > maxEncodedLength) {
+    throw new Error(`Malformed message: ${label} is too large.`);
+  }
+  if (
+    value.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  ) {
+    throw new Error(`Malformed message: ${label} is not valid base64.`);
+  }
+  const decoded = decodeBase64(value, label);
+  if (arrayBufferToBase64(decoded) !== value) {
+    throw new Error(`Malformed message: ${label} is not canonical base64.`);
+  }
+  if (decoded.byteLength < minBytes || decoded.byteLength > maxBytes) {
+    const expected = minBytes === maxBytes ? `${minBytes} bytes` : `${minBytes}-${maxBytes} bytes`;
+    throw new Error(`Malformed message: ${label} must be ${expected}.`);
+  }
+  return decoded;
 }
 
 /**

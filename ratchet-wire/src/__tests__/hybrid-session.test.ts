@@ -58,9 +58,13 @@ describe('real PQXDH-style hybrid setup', () => {
       const { keys, bundle, alice } = await fixture();
       const signature = bundle[field].slice(0);
       new Uint8Array(signature)[0] ^= 1;
-      // A malformed KEM public key would throw from encapsulate. Signature
-      // rejection must happen first, with the specific signature error.
-      await expect(initiateHybridSession(alice, { ...bundle, [field]: signature, kemPublicKey: new Uint8Array(0) })).rejects.toThrow('signature is invalid');
+      // A different correctly sized KEM key would be accepted by encapsulate.
+      // Signature rejection must happen before that operation.
+      await expect(initiateHybridSession(alice, {
+        ...bundle,
+        [field]: signature,
+        kemPublicKey: new Uint8Array(bundle.kemPublicKey.length),
+      })).rejects.toThrow('signature is invalid');
       expect(keys.kemConsumed).toBe(false);
     });
   }
@@ -91,6 +95,30 @@ describe('real PQXDH-style hybrid setup', () => {
     await expect(acceptHybridSession(keys, { ...a.initial, kemCiphertext: a.initial.kemCiphertext.slice(1) })).rejects.toThrow('Malformed');
     await expect(initiateHybridSession(alice, { ...bundle, kemId: 'unknown' })).rejects.toThrow('identifier');
     expect(keys.kemConsumed).toBe(false);
+  });
+
+  it('rejects malformed runtime fields before KEM or DH work and retains prekeys', async () => {
+    const { keys, bundle, alice } = await fixture();
+    await expect(initiateHybridSession(alice, {
+      ...bundle,
+      kemPublicKey: new Uint8Array(bundle.kemPublicKey.length - 1),
+    })).rejects.toThrow(/Malformed hybrid message/);
+
+    const a = await initiateHybridSession(alice, bundle);
+    await expect(acceptHybridSession(keys, {
+      ...a.initial,
+      aliceIdentity: new Uint8Array(31),
+    })).rejects.toThrow(/Malformed hybrid message/);
+    await expect(acceptHybridSession(keys, {
+      ...a.initial,
+      usesCurveOneTime: 'yes' as unknown as boolean,
+    })).rejects.toThrow(/Malformed hybrid message/);
+    await expect(acceptHybridSession(keys, {
+      ...a.initial,
+      ciphertext: new ArrayBuffer(a.initial.ciphertext.byteLength + 1),
+    })).rejects.toThrow(/Malformed hybrid message/);
+    expect(keys.kemConsumed).toBe(false);
+    expect(keys.curveConsumed).toBe(false);
   });
 
   it('binds both the curve and the KEM prekey: swapping either without a new signature aborts', async () => {

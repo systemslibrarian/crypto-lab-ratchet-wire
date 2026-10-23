@@ -74,42 +74,45 @@ export async function dhRatchet(
   theirNewPublicKey: Uint8Array
 ): Promise<RatchetState> {
   const previousSendingChainLength = state.sendingChain?.messageNumber ?? 0;
+  let dhReceive: ArrayBuffer | undefined;
+  let dhSend: ArrayBuffer | undefined;
+  let recv: Awaited<ReturnType<typeof kdfRk>> | undefined;
+  let newDHKeyPair: KeyPair | undefined;
+  let completed = false;
 
-  // Receiving half: derive the chain that decrypts the incoming message.
-  const dhReceive = await deriveSharedSecret(
-    state.myDHKeyPair.privateKey,
-    theirNewPublicKey
-  );
-  const recv = await kdfRk(state.rootKey, dhReceive);
+  try {
+    // Receiving half: derive the chain that decrypts the incoming message.
+    dhReceive = await deriveSharedSecret(state.myDHKeyPair.privateKey, theirNewPublicKey);
+    recv = await kdfRk(state.rootKey, dhReceive);
 
-  // Generate a fresh ratchet key pair for ourselves.
-  const newDHKeyPair = await generateKeyPair();
+    // Generate a fresh ratchet key pair for ourselves.
+    newDHKeyPair = await generateKeyPair();
 
-  // Sending half: derive the chain we will use for our replies.
-  const dhSend = await deriveSharedSecret(
-    newDHKeyPair.privateKey,
-    theirNewPublicKey
-  );
-  const send = await kdfRk(recv.rootKey, dhSend);
-
-  // Best-effort wipe of secrets this function owns. We deliberately do NOT wipe
-  // the input `state.rootKey`: this function is non-mutating (callers, including
-  // decrypt(), treat the input state as immutable and may still hold it after a
-  // failed/forged message). Zeroing the caller's buffer here would corrupt the
-  // session if AEAD authentication later fails. The superseded root key is
-  // released by the old, discarded state and reclaimed by the GC.
-  clearKey(recv.rootKey);
-  clearKey(dhReceive);
-  clearKey(dhSend);
-
-  return {
-    rootKey: send.rootKey,
-    associatedData: state.associatedData,
-    myDHKeyPair: newDHKeyPair,
-    theirDHPublicKey: theirNewPublicKey,
-    sendingChain: { chainKey: send.chainKey, messageNumber: 0 },
-    receivingChain: { chainKey: recv.chainKey, messageNumber: 0 },
-    previousSendingChainLength,
-    dhRatchetCount: state.dhRatchetCount + 1,
-  };
+    // Sending half: derive the chain we will use for our replies.
+    dhSend = await deriveSharedSecret(newDHKeyPair.privateKey, theirNewPublicKey);
+    const send = await kdfRk(recv.rootKey, dhSend);
+    const result: RatchetState = {
+      rootKey: send.rootKey,
+      associatedData: state.associatedData,
+      myDHKeyPair: newDHKeyPair,
+      theirDHPublicKey: theirNewPublicKey,
+      sendingChain: { chainKey: send.chainKey, messageNumber: 0 },
+      receivingChain: { chainKey: recv.chainKey, messageNumber: 0 },
+      previousSendingChainLength,
+      dhRatchetCount: state.dhRatchetCount + 1,
+    };
+    completed = true;
+    return result;
+  } finally {
+    // Best-effort wipe of secrets this function owns. We deliberately do NOT
+    // wipe the caller's root key because a forged message must leave the input
+    // state usable. Returned keys remain live only on a completed ratchet.
+    if (dhReceive) clearKey(dhReceive);
+    if (dhSend) clearKey(dhSend);
+    if (recv) {
+      clearKey(recv.rootKey);
+      if (!completed) clearKey(recv.chainKey);
+    }
+    if (!completed && newDHKeyPair) newDHKeyPair.privateKey.fill(0);
+  }
 }

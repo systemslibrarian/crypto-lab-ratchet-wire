@@ -4,10 +4,11 @@
  * Reference: RFC 8032 - Edwards-Curve Digital Signature Algorithm (EdDSA)
  * https://tools.ietf.org/html/rfc8032
  *
- * Used to AUTHENTICATE the X3DH handshake: Bob signs his signed pre-key (SPK)
- * with his long-term Ed25519 identity key, and Alice verifies that signature
- * before deriving the session secret. Without this check a man-in-the-middle
- * could substitute their own pre-key and silently sit between the two parties.
+ * Used to protect X3DH signed-prekey integrity: Bob signs his signed pre-key
+ * (SPK) with an Ed25519 signing identity, and Alice verifies that signature
+ * before deriving the session secret. The signing identity itself must still
+ * be pinned or compared through an authenticated channel; otherwise an attacker
+ * can replace the entire bundle with another internally valid one.
  *
  * Implemented with the audited `@noble/curves` library rather than Web Crypto:
  * browser Web Crypto support for Ed25519 is very recent (Chrome 137, 2025) and

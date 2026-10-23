@@ -1,5 +1,5 @@
 /**
- * Tests for authenticated X3DH Session Initialization.
+ * Tests for signed-prekey-checked X3DH session initialization.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -17,7 +17,7 @@ import { generateKeyPair, KeyPair } from '../crypto/x25519';
 import { generateSigningKeyPair } from '../crypto/ed25519';
 import { toHex } from './session-helper';
 
-describe('Authenticated X3DH Session Initialization', () => {
+describe('Signed-prekey X3DH session initialization', () => {
   let aliceKeys: AliceSessionInitKeys;
   let bobKeys: BobPreSessionKeys;
   let bobBundle: BobPrekeyBundle;
@@ -77,25 +77,55 @@ describe('Authenticated X3DH Session Initialization', () => {
     expect(toHex(aliceSession2.rootKey)).not.toBe(toHex(aliceSession1.rootKey));
   });
 
-  it('AUTHENTICATION: rejects a bundle whose signed pre-key signature is invalid', async () => {
+  it('SIGNED-PREKEY INTEGRITY: rejects an invalid signed pre-key signature', async () => {
     const forgedSig = bobBundle.signedPreKeySignature.slice(0);
     new Uint8Array(forgedSig)[0] ^= 0xff;
     const tampered: BobPrekeyBundle = { ...bobBundle, signedPreKeySignature: forgedSig };
     await expect(initiateSessionX3DH(aliceKeys, tampered)).rejects.toThrow(/signature|man-in-the-middle/i);
   });
 
-  it('AUTHENTICATION: rejects a bundle whose signed pre-key was swapped (MITM)', async () => {
-    // A man-in-the-middle substitutes their own pre-key but keeps Bob's identity
-    // key and signature — the signature no longer matches the new pre-key.
+  it('SIGNED-PREKEY INTEGRITY: rejects a changed pre-key under the original signature', async () => {
+    // An attacker changes the pre-key but keeps the supplied identity key and
+    // signature, so the signature no longer matches the pre-key.
     const attackerPreKey = await generateKeyPair();
     const tampered: BobPrekeyBundle = { ...bobBundle, signedPreKey: attackerPreKey.publicKey };
     await expect(initiateSessionX3DH(aliceKeys, tampered)).rejects.toThrow(/signature|man-in-the-middle/i);
   });
 
-  it('AUTHENTICATION: rejects a bundle signed by the wrong identity key', async () => {
+  it('SIGNED-PREKEY INTEGRITY: rejects a signature checked under a different supplied identity', async () => {
     const attackerIdentity = await generateSigningKeyPair();
     const tampered: BobPrekeyBundle = { ...bobBundle, identitySigningKey: attackerIdentity.publicKey };
     await expect(initiateSessionX3DH(aliceKeys, tampered)).rejects.toThrow(/signature|man-in-the-middle/i);
+  });
+
+  it('rejects malformed public bundle fields before signature or DH work', async () => {
+    await expect(initiateSessionX3DH(aliceKeys, {
+      ...bobBundle,
+      signedPreKey: bobBundle.signedPreKey.slice(1),
+    })).rejects.toThrow(/Malformed X3DH input.*32 bytes/);
+    await expect(initiateSessionX3DH(aliceKeys, {
+      ...bobBundle,
+      signedPreKeySignature: new ArrayBuffer(63),
+    })).rejects.toThrow(/Malformed X3DH input.*64 bytes/);
+  });
+
+  it('requires external identity verification: a fully substituted valid bundle is accepted', async () => {
+    const attackerKeys: BobPreSessionKeys = {
+      identityKeyPair: await generateKeyPair(),
+      identitySigningKeyPair: await generateSigningKeyPair(),
+      signedPreKeyPair: await generateKeyPair(),
+      oneTimePreKeyPair: await generateKeyPair(),
+    };
+    const attackerBundle = await createBobPrekeyBundle(attackerKeys);
+
+    expect(attackerBundle.identitySigningKey).not.toEqual(bobBundle.identitySigningKey);
+    const aliceSession = await initiateSessionX3DH(aliceKeys, attackerBundle);
+    const attackerSession = await acceptSessionX3DH(
+      attackerKeys,
+      aliceKeys.identityKeyPair.publicKey,
+      aliceKeys.ephemeralKeyPair.publicKey,
+    );
+    expect(toHex(aliceSession.rootKey)).toBe(toHex(attackerSession.rootKey));
   });
 
   it('should initialize Alice as initiator (sending chain ready, no receiving chain)', async () => {

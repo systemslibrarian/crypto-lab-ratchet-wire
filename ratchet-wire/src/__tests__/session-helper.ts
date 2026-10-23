@@ -1,6 +1,6 @@
 /**
  * Shared test helper: establish a synced Alice/Bob Double Ratchet session via
- * the authenticated X3DH handshake, exactly as the application does at startup.
+ * the signed-prekey-checked X3DH handshake, exactly as the application does at startup.
  *
  * (Not a test file — excluded by Vitest's default `*.test.ts` include glob.)
  */
@@ -22,7 +22,7 @@ export interface Session {
   bobState: RatchetState;
 }
 
-/** Run authenticated X3DH from both perspectives and initialize both ratchets. */
+/** Run signed-prekey-checked X3DH from both perspectives and initialize both ratchets. */
 export async function establishSession(): Promise<Session> {
   const aliceIK = await generateKeyPair();
   const aliceEK = await generateKeyPair();
