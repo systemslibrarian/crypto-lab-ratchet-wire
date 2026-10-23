@@ -78,24 +78,28 @@ export async function ratchetStep(state: ChainState): Promise<{
     DOMAIN_LABELS.MESSAGE,
     32
   );
+  try {
+    const derivedChainKey = await hkdf(
+      state.chainKey,
+      CHAIN_KEY_SALT,
+      DOMAIN_LABELS.CHAIN,
+      32
+    );
 
-  const derivedChainKey = await hkdf(
-    state.chainKey,
-    CHAIN_KEY_SALT,
-    DOMAIN_LABELS.CHAIN,
-    32
-  );
-
-  return {
-    newState: {
-      chainKey: derivedChainKey,
-      messageNumber: state.messageNumber + 1,
-    },
-    messageKey: {
-      key: derivedMessageKey,
-      messageNumber: state.messageNumber,
-    },
-  };
+    return {
+      newState: {
+        chainKey: derivedChainKey,
+        messageNumber: state.messageNumber + 1,
+      },
+      messageKey: {
+        key: derivedMessageKey,
+        messageNumber: state.messageNumber,
+      },
+    };
+  } catch (error) {
+    clearKey(derivedMessageKey);
+    throw error;
+  }
 }
 
 /**

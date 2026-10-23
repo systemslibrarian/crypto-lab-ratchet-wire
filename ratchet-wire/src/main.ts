@@ -6,7 +6,7 @@
 import './style.css';
 import { RatchetState } from './crypto/dh-ratchet';
 import { encrypt, decrypt, Message, SkippedKeys } from './crypto/double-ratchet';
-import { ratchetStep, ChainState } from './crypto/symmetric-ratchet';
+import { ratchetStep, ChainState, clearKey } from './crypto/symmetric-ratchet';
 import { generateKeyPair } from './crypto/x25519';
 import { generateSigningKeyPair } from './crypto/ed25519';
 import {
@@ -70,14 +70,24 @@ function skippedNumbers(skipped: SkippedKeys): number[] {
  * forward, which is what makes earlier keys unrecoverable.
  */
 async function chainMessageKeyFps(chainKey0: ArrayBuffer, count: number): Promise<string[]> {
-  let chain: ChainState = { chainKey: chainKey0, messageNumber: 0 };
+  let chain: ChainState = { chainKey: chainKey0.slice(0), messageNumber: 0 };
   const fps: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const { newState, messageKey } = await ratchetStep(chain);
-    fps.push(hex(messageKey.key));
-    chain = newState;
+  try {
+    for (let i = 0; i < count; i++) {
+      const previousChainKey = chain.chainKey;
+      const { newState, messageKey } = await ratchetStep(chain);
+      chain = newState;
+      clearKey(previousChainKey);
+      try {
+        fps.push(hex(messageKey.key));
+      } finally {
+        clearKey(messageKey.key);
+      }
+    }
+    return fps;
+  } finally {
+    clearKey(chain.chainKey);
   }
-  return fps;
 }
 
 /** Extract the teaching-relevant wire fields from an encrypted message. */
@@ -90,7 +100,7 @@ function wireInfo(message: Message): ConversationMessage['wire'] {
   };
 }
 
-/** Authentication outcome of the X3DH handshake, for display. */
+/** Signed-prekey verification outcome of the X3DH handshake, for display. */
 interface HandshakeInfo {
   mode: SetupMode;
   hybrid?: HybridTrace;
@@ -213,16 +223,16 @@ const QUIZ_QUESTIONS: QuizQuestion[] = [
       'That is forward secrecy: HKDF cannot be run backwards, and each message key is deleted right after use. The Ratchet State tab shows every key being derived and destroyed.',
   },
   {
-    question: "What attack does Bob's signed pre-key signature prevent?",
+    question: "What does Bob's signed pre-key signature establish by itself?",
     options: [
-      'A man-in-the-middle swapping the pre-key during session setup',
-      'An attacker flooding Bob with messages',
-      'Replay of old messages',
-      'Brute-forcing the root key',
+      'The pre-key belongs to the supplied signing identity; that identity still needs trusted verification',
+      'The supplied signing identity definitely belongs to Bob',
+      'The whole bundle cannot be replaced by an attacker',
+      'The initial message cannot be replayed',
     ],
     answer: 0,
     explain:
-      "Alice verifies the pre-key against Bob's long-term Ed25519 identity before deriving anything. Press “Simulate a tampered pre-key” on the Conversation tab to watch the rejection.",
+      'The signature rejects a changed pre-key under the supplied identity, but a self-consistent replacement bundle also verifies. Compare or pin the displayed identity fingerprint through a trusted channel.',
   },
   {
     question:
@@ -301,7 +311,7 @@ async function generateBobKeys(): Promise<BobPreSessionKeys> {
   };
 }
 
-/** Run the authenticated X3DH handshake and initialize both ratchets. */
+/** Run the signed-prekey-checked X3DH handshake and initialize both ratchets. */
 async function buildSession(mode: SetupMode = 'classical', kind: 'one-time' | 'last-resort' = 'one-time'): Promise<Session> {
   const aliceIK = await generateKeyPair();
   const aliceEK = await generateKeyPair();
@@ -327,8 +337,9 @@ async function buildSession(mode: SetupMode = 'classical', kind: 'one-time' | 'l
   }
   const bobBundle = await createBobPrekeyBundle(bobKeys);
 
-  // initiateSessionX3DH verifies Bob's signed pre-key signature and THROWS if
-  // it does not check out, so reaching the next line means authentication held.
+  // initiateSessionX3DH verifies the signed pre-key under the supplied signing
+  // identity and throws if it does not check out. The identity itself remains
+  // untrusted until its fingerprint is checked through a trusted channel.
   const aliceSession = await initiateSessionX3DH(
     { identityKeyPair: aliceIK, ephemeralKeyPair: aliceEK },
     bobBundle
@@ -762,7 +773,7 @@ export class RatchetWireApp {
     );
   }
 
-  /** Show the authenticated-handshake banner (fingerprint + verified state). */
+  /** Show the signed-prekey status and the separate identity-verification caveat. */
   private renderHandshake() {
     const { handshake } = this.session;
     const badge = document.getElementById('handshake-badge');
@@ -810,11 +821,7 @@ export class RatchetWireApp {
     }
   }
 
-  /**
-   * Demonstrate that the handshake is authenticated: tamper with Bob's signed
-   * pre-key signature (as a man-in-the-middle would have to) and show that X3DH
-   * refuses to proceed.
-   */
+  /** Demonstrate that a pre-key changed without a matching signature is rejected. */
   private async demoTamperedPrekey() {
     const result = document.getElementById('mitm-result') as HTMLParagraphElement | null;
     const show = (text: string, blocked: boolean) => {
@@ -839,9 +846,10 @@ export class RatchetWireApp {
       }
       const bundle = await createBobPrekeyBundle(bobKeys);
 
-      // A man-in-the-middle can swap Bob's pre-key but cannot forge his identity
-      // signature over it — model the resulting invalid signature by flipping a
-      // byte, then watch Alice's X3DH reject the bundle.
+      // Change the signed pre-key without supplying a matching signature, then
+      // watch Alice reject the internally inconsistent bundle. A complete,
+      // self-consistent bundle substitution is a separate threat and is called
+      // out beside the displayed identity fingerprint.
       const forgedSig = bundle.signedPreKeySignature.slice(0);
       new Uint8Array(forgedSig)[0] ^= 0xff;
       const tampered: BobPrekeyBundle = { ...bundle, signedPreKeySignature: forgedSig };
@@ -849,8 +857,12 @@ export class RatchetWireApp {
       await initiateSessionX3DH({ identityKeyPair: aliceIK, ephemeralKeyPair: aliceEK }, tampered);
       show('Unexpected: the tampered pre-key was accepted — this should never happen.', false);
     } catch (err) {
-      show(`✓ Blocked: ${(err as Error).message}`, true);
-      this.announce('Man-in-the-middle attempt blocked: the tampered pre-key signature was rejected.');
+      const message = (err as Error).message;
+      if (!/prekey signature is invalid|signed pre-key signature is invalid/i.test(message)) {
+        throw err;
+      }
+      show(`✓ Blocked: ${message}`, true);
+      this.announce('Signature tampering blocked. The supplied identity still needs trusted verification.');
     }
   }
 

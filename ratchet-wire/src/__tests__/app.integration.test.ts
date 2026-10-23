@@ -2,8 +2,8 @@
 /**
  * End-to-end DOM smoke test: boot the real application (the same RatchetWireApp
  * the browser runs) against the real index.html, and verify the user-visible
- * flow actually works — authenticated handshake banner, sending a message, and
- * the man-in-the-middle demonstration.
+ * flow actually works — signed-prekey status, sending a message, and the
+ * invalid-signature demonstration.
  *
  * This is the closest proxy to "does it work in a browser?" available without a
  * live browser: the crypto path is the audited pure-JS @noble code (identical in
@@ -355,7 +355,7 @@ describe('App integration (DOM smoke test)', () => {
     expect(document.getElementById('quiz-score')!.textContent).toBe('');
   });
 
-  it('demonstrates the MITM defense: a tampered pre-key is blocked', async () => {
+  it('demonstrates that changing a pre-key without re-signing is blocked', async () => {
     const { RatchetWireApp } = await import('../main');
     await new RatchetWireApp().init();
 

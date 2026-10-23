@@ -24,9 +24,10 @@ test('the guided tour advances step-by-step and drives the tabs', async ({ page 
   await expect(page.locator('#guide-reopen')).toBeVisible();
 });
 
-test('boots with an authenticated handshake', async ({ page }) => {
+test('boots with a valid signed pre-key and an identity-verification warning', async ({ page }) => {
   await expect(page.locator('#handshake-badge')).toContainText('Prekey signatures valid');
   await expect(page.locator('#handshake-detail')).toContainText(/[0-9A-F]{2}( [0-9A-F]{2}){7}/);
+  await expect(page.locator('#handshake-detail')).toContainText('Identity not pinned');
 });
 
 test('the sample button sends and renders a message with its wire inspector', async ({ page }) => {
@@ -164,7 +165,7 @@ test('the quiz gives instant feedback and a final score', async ({ page }) => {
   ).toContainText(/ratchet public key/i);
 });
 
-test('the MITM demo rejects a tampered pre-key', async ({ page }) => {
+test('the signature demo rejects a pre-key changed without re-signing', async ({ page }) => {
   await page.getByRole('button', { name: /Simulate a tampered pre-key/i }).click();
   await expect(page.locator('#mitm-result')).toContainText(/Blocked/i);
 });

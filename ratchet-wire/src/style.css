@@ -1265,7 +1265,7 @@ a:hover {
   color: var(--color-text);
 }
 
-/* ---- Authenticated-handshake banner ---- */
+/* ---- Signed-prekey status banner ---- */
 .handshake-banner {
   display: flex;
   flex-wrap: wrap;

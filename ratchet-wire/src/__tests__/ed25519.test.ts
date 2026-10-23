@@ -1,5 +1,5 @@
 /**
- * Tests for Ed25519 signatures (used to authenticate the X3DH handshake).
+ * Tests for Ed25519 signatures used to protect X3DH signed-prekey integrity.
  */
 
 import { describe, it, expect } from 'vitest';

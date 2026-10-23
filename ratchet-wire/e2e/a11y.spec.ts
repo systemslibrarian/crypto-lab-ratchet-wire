@@ -20,7 +20,7 @@ import {
  * into its collapsed reopen button, reopened and dismissed; the composer's
  * refusal branch, where Bob tries to send before he has a receiving chain;
  * Alice's first message, then Bob's reply, then a same-direction follow-up, so
- * the coach narrates a DH ratchet and then a symmetric one; the MITM demo
+ * the coach narrates a DH ratchet and then a symmetric one; the signature demo
  * rejecting a tampered pre-key; the out-of-order queue generated, delivered out
  * of order so Bob's skipped-key store fills and drains, then reset; the
  * message-key timeline, which only exists once real traffic has run; the

@@ -837,8 +837,8 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   await expect(page.locator('#coach-what')).toContainText(/symmetric ratchet/i)
   await scanAt('a same-direction follow-up, narrated as a symmetric ratchet')
 
-  // ── The MITM demo's rejection ───────────────────────────────────────────
-  await page.getByRole('button', { name: /Simulate a tampered pre-key/i }).click()
+  // ── The invalid-signature demo's rejection ──────────────────────────────
+  await page.getByRole('button', { name: /Alter a pre-key without re-signing/i }).click()
   await expect(page.locator('#mitm-result')).toContainText(/Blocked/i)
   await scanAt('tampered pre-key blocked by the signature check')
 

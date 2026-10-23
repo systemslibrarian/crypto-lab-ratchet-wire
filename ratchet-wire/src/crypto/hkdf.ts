@@ -103,8 +103,12 @@ export async function kdfRk(
   dhOutput: ArrayBuffer
 ): Promise<{ rootKey: ArrayBuffer; chainKey: ArrayBuffer }> {
   const material = await hkdf(dhOutput, rootKey, DOMAIN_LABELS.ROOT, 64);
-  return {
-    rootKey: material.slice(0, 32),
-    chainKey: material.slice(32, 64),
-  };
+  try {
+    return {
+      rootKey: material.slice(0, 32),
+      chainKey: material.slice(32, 64),
+    };
+  } finally {
+    new Uint8Array(material).fill(0);
+  }
 }

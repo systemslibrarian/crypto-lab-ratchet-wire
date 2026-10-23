@@ -8,11 +8,11 @@
 # a breaking major together with the safe bumps makes the whole PR unmergeable,
 # so majors come individually and a human decides.
 #
-# github-actions majors ARE grouped: checkout v4->v7, setup-node v4->v7 and the
-# Pages v5/v6 jumps were verified green across all 176 repos on 2026-08-18.
+# github-actions majors ARE grouped so related workflow updates can be reviewed
+# together. They are not auto-merged; a maintainer reviews every major update.
 #
-# The minor/patch group and the actions group auto-merge once this lab's own gate
-# passes on the PR -- see the dependabot-auto-merge job in the deploy workflow.
+# Patch and minor updates auto-merge once this lab's own gate passes. Major npm
+# or Actions updates remain open; see the deploy workflow's metadata gate.
 version: 2
 updates:
   - package-ecosystem: "npm"

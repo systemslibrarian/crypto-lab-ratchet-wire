@@ -1,5 +1,5 @@
 /**
- * X3DH — Authenticated Session Initialization
+ * X3DH — Signed-prekey Session Initialization
  *
  * Reference: Signal X3DH Specification
  * https://signal.org/docs/specifications/x3dh/
@@ -9,11 +9,12 @@
  * plus Alice's identity/ephemeral keys, WITHOUT an interactive round trip. SK
  * becomes the initial root key of the Double Ratchet.
  *
- * This implementation is faithful to the spec's security-relevant steps:
- *   - Bob signs his signed pre-key (SPK) with his long-term identity key, and
- *     Alice VERIFIES that signature before using the bundle. This authenticates
- *     the handshake and defeats a man-in-the-middle who would substitute their
- *     own pre-key.
+ * This implementation preserves the spec's security-relevant signed-prekey
+ * check: Bob signs his signed pre-key (SPK) with his signing identity key, and
+ * Alice verifies that signature before using the bundle. This proves that the
+ * pre-key belongs to the supplied signing key. The supplied identity still has
+ * to be pinned or compared through an authenticated channel; otherwise an
+ * attacker can substitute an entirely self-consistent bundle.
  *   - A one-time pre-key (OPK) contributes a fourth DH, giving the session
  *     forward secrecy against later compromise of Bob's long-term keys.
  *
@@ -55,7 +56,7 @@ export interface AliceSessionInitKeys {
  * Bob's full set of secret pre-session keys.
  *
  *   - identityKeyPair        X25519 — used in the DH terms (IK_B)
- *   - identitySigningKeyPair Ed25519 — signs the SPK; pins Bob's identity
+ *   - identitySigningKeyPair Ed25519 — signs the SPK; must be pinned externally
  *   - signedPreKeyPair       X25519 — SPK_B; also Bob's initial ratchet key
  *   - oneTimePreKeyPair      X25519 — OPK_B; single-use, adds the 4th DH
  */
@@ -68,8 +69,9 @@ export interface BobPreSessionKeys {
 
 /**
  * Bob's PUBLIC pre-key bundle, as it would be fetched from a server. The signed
- * pre-key carries a signature by Bob's identity key so the initiator can verify
- * it was not substituted in transit.
+ * pre-key carries a signature by the bundle's signing identity key so the
+ * initiator can detect a changed pre-key. Authenticating whose identity key it
+ * is remains an external requirement.
  */
 export interface BobPrekeyBundle {
   identityKey: Uint8Array;
@@ -89,6 +91,22 @@ export interface SessionInitResult {
 
 // X3DH uses a zero-filled salt for the initial KDF (no prior secret to mix in).
 const X3DH_SALT = new Uint8Array(32).buffer;
+
+function requirePublicKey(value: unknown, label: string): asserts value is Uint8Array {
+  if (!(value instanceof Uint8Array) || value.byteLength !== 32) {
+    throw new Error(`Malformed X3DH input: ${label} must be 32 bytes.`);
+  }
+}
+
+function validateBobBundle(bob: BobPrekeyBundle): void {
+  requirePublicKey(bob.identityKey, 'DH identity key');
+  requirePublicKey(bob.identitySigningKey, 'signing identity key');
+  requirePublicKey(bob.signedPreKey, 'signed pre-key');
+  requirePublicKey(bob.oneTimePreKey, 'one-time pre-key');
+  if (!(bob.signedPreKeySignature instanceof ArrayBuffer) || bob.signedPreKeySignature.byteLength !== 64) {
+    throw new Error('Malformed X3DH input: signed pre-key signature must be 64 bytes.');
+  }
+}
 
 /**
  * Build Bob's public pre-key bundle, signing the signed pre-key with his
@@ -128,23 +146,26 @@ export async function createBobPrekeyBundle(
  * @param aliceKeys - Alice's identity and ephemeral key pairs
  * @param bob - Bob's public pre-key bundle (from {@link createBobPrekeyBundle})
  * @returns The shared root key SK
- * @throws Error if the signed pre-key signature is invalid (possible MITM)
+ * @throws Error if the signed pre-key signature is invalid
  */
 export async function initiateSessionX3DH(
   aliceKeys: AliceSessionInitKeys,
   bob: BobPrekeyBundle
 ): Promise<SessionInitResult> {
+  validateBobBundle(bob);
   if (!(await verifyBundleSignature(bob))) {
     throw new Error(
       'X3DH aborted: the signed pre-key signature is invalid. ' +
-        "Bob's identity could not be authenticated (possible man-in-the-middle)."
+        'The pre-key does not belong to the supplied signing identity.'
     );
   }
 
   const terms = await aliceDHTerms(aliceKeys, bob);
-  const rootKey = await deriveRootKey(terms);
-  terms.forEach(clearBuffer);
-  return { rootKey };
+  try {
+    return { rootKey: await deriveRootKey(terms) };
+  } finally {
+    terms.forEach(clearBuffer);
+  }
 }
 
 /** Verify Bob's signed pre-key against his identity key. */
@@ -158,12 +179,17 @@ async function aliceDHTerms(
   aliceKeys: AliceSessionInitKeys,
   bob: BobPrekeyBundle
 ): Promise<ArrayBuffer[]> {
-  return [
-    await deriveSharedSecret(aliceKeys.identityKeyPair.privateKey, bob.signedPreKey),
-    await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.identityKey),
-    await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.signedPreKey),
-    await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.oneTimePreKey),
-  ];
+  const terms: ArrayBuffer[] = [];
+  try {
+    terms.push(await deriveSharedSecret(aliceKeys.identityKeyPair.privateKey, bob.signedPreKey));
+    terms.push(await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.identityKey));
+    terms.push(await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.signedPreKey));
+    terms.push(await deriveSharedSecret(aliceKeys.ephemeralKeyPair.privateKey, bob.oneTimePreKey));
+    return terms;
+  } catch (error) {
+    terms.forEach(clearBuffer);
+    throw error;
+  }
 }
 
 /** One Diffie-Hellman term in the X3DH breakdown, for visualization. */
@@ -194,20 +220,22 @@ export async function describeAliceX3DH(
   aliceKeys: AliceSessionInitKeys,
   bob: BobPrekeyBundle
 ): Promise<X3DHBreakdown> {
+  validateBobBundle(bob);
   const signatureVerified = await verifyBundleSignature(bob);
   const terms = await aliceDHTerms(aliceKeys, bob);
-  const rootKey = await deriveRootKey(terms);
-
-  const formulas = ['DH(IK_A, SPK_B)', 'DH(EK_A, IK_B)', 'DH(EK_A, SPK_B)', 'DH(EK_A, OPK_B)'];
-  const breakdown: X3DHBreakdown = {
-    signatureVerified,
-    terms: terms.map((dh, i) => ({ name: `DH${i + 1}`, formula: formulas[i], value: shortHex(dh) })),
-    rootKey: shortHex(rootKey),
-  };
-
-  terms.forEach(clearBuffer);
-  clearBuffer(rootKey);
-  return breakdown;
+  let rootKey: ArrayBuffer | undefined;
+  try {
+    rootKey = await deriveRootKey(terms);
+    const formulas = ['DH(IK_A, SPK_B)', 'DH(EK_A, IK_B)', 'DH(EK_A, SPK_B)', 'DH(EK_A, OPK_B)'];
+    return {
+      signatureVerified,
+      terms: terms.map((dh, i) => ({ name: `DH${i + 1}`, formula: formulas[i], value: shortHex(dh) })),
+      rootKey: shortHex(rootKey),
+    };
+  } finally {
+    terms.forEach(clearBuffer);
+    if (rootKey) clearBuffer(rootKey);
+  }
 }
 
 /** First 8 bytes of a buffer as upper-case hex, with an ellipsis. */
@@ -237,14 +265,18 @@ export async function acceptSessionX3DH(
   alicePublicIK: Uint8Array,
   alicePublicEK: Uint8Array
 ): Promise<SessionInitResult> {
-  const dh1 = await deriveSharedSecret(bobKeys.signedPreKeyPair.privateKey, alicePublicIK);
-  const dh2 = await deriveSharedSecret(bobKeys.identityKeyPair.privateKey, alicePublicEK);
-  const dh3 = await deriveSharedSecret(bobKeys.signedPreKeyPair.privateKey, alicePublicEK);
-  const dh4 = await deriveSharedSecret(bobKeys.oneTimePreKeyPair.privateKey, alicePublicEK);
-
-  const rootKey = await deriveRootKey([dh1, dh2, dh3, dh4]);
-  [dh1, dh2, dh3, dh4].forEach(clearBuffer);
-  return { rootKey };
+  requirePublicKey(alicePublicIK, 'Alice identity key');
+  requirePublicKey(alicePublicEK, 'Alice ephemeral key');
+  const terms: ArrayBuffer[] = [];
+  try {
+    terms.push(await deriveSharedSecret(bobKeys.signedPreKeyPair.privateKey, alicePublicIK));
+    terms.push(await deriveSharedSecret(bobKeys.identityKeyPair.privateKey, alicePublicEK));
+    terms.push(await deriveSharedSecret(bobKeys.signedPreKeyPair.privateKey, alicePublicEK));
+    terms.push(await deriveSharedSecret(bobKeys.oneTimePreKeyPair.privateKey, alicePublicEK));
+    return { rootKey: await deriveRootKey(terms) };
+  } finally {
+    terms.forEach(clearBuffer);
+  }
 }
 
 /**
@@ -266,20 +298,23 @@ export async function createAliceRatchetState(
   aliceRatchetKeyPair: KeyPair,
   bobSignedPreKeyPublic: Uint8Array
 ): Promise<RatchetState> {
+  requirePublicKey(bobSignedPreKeyPublic, 'Bob signed pre-key');
   const dh = await deriveSharedSecret(aliceRatchetKeyPair.privateKey, bobSignedPreKeyPublic);
-  const { rootKey, chainKey } = await kdfRk(session.rootKey, dh);
-  clearBuffer(dh);
-
-  return {
-    rootKey,
-    associatedData: session.associatedData,
-    myDHKeyPair: aliceRatchetKeyPair,
-    theirDHPublicKey: bobSignedPreKeyPublic,
-    sendingChain: { chainKey, messageNumber: 0 },
-    receivingChain: null,
-    previousSendingChainLength: 0,
-    dhRatchetCount: 0,
-  };
+  try {
+    const { rootKey, chainKey } = await kdfRk(session.rootKey, dh);
+    return {
+      rootKey,
+      associatedData: session.associatedData,
+      myDHKeyPair: aliceRatchetKeyPair,
+      theirDHPublicKey: bobSignedPreKeyPublic,
+      sendingChain: { chainKey, messageNumber: 0 },
+      receivingChain: null,
+      previousSendingChainLength: 0,
+      dhRatchetCount: 0,
+    };
+  } finally {
+    clearBuffer(dh);
+  }
 }
 
 /**
@@ -322,9 +357,11 @@ export function createBobRatchetState(
  */
 async function deriveRootKey(dhOutputs: ArrayBuffer[]): Promise<ArrayBuffer> {
   const concatenated = concatenateBuffers(dhOutputs);
-  const rootKey = await hkdf(concatenated, X3DH_SALT, DOMAIN_LABELS.ROOT, 32);
-  clearBuffer(concatenated);
-  return rootKey;
+  try {
+    return await hkdf(concatenated, X3DH_SALT, DOMAIN_LABELS.ROOT, 32);
+  } finally {
+    clearBuffer(concatenated);
+  }
 }
 
 /** Concatenate multiple ArrayBuffers into one. */
