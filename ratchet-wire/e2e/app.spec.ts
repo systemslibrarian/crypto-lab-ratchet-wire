@@ -166,6 +166,6 @@ test('the quiz gives instant feedback and a final score', async ({ page }) => {
 });
 
 test('the signature demo rejects a pre-key changed without re-signing', async ({ page }) => {
-  await page.getByRole('button', { name: /Simulate a tampered pre-key/i }).click();
+  await page.getByRole('button', { name: /Alter a pre-key without re-signing/i }).click();
   await expect(page.locator('#mitm-result')).toContainText(/Blocked/i);
 });
