@@ -136,9 +136,49 @@ describe('Double Ratchet Integration', () => {
     await expect(decrypt(bob, shortIv, bobSkipped)).rejects.toThrow(/iv|malformed/i);
   });
 
-  it('rejects a malformed header (negative / fractional / NaN message number)', async () => {
+  it('bounds encoded wire fields before ratchet or decryption work', async () => {
+    const { message } = await encrypt(alice, 'bounded');
+    const originalRoot = toHex(bob.rootKey);
+
+    const oversizedKey: Message = {
+      ...message,
+      header: { ...message.header, dhPublicKey: btoa('x'.repeat(33)) },
+    };
+    await expect(decrypt(bob, oversizedKey, bobSkipped)).rejects.toThrow(/DH public key.*(too large|32 bytes)/i);
+
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const canonicalChar = message.header.dhPublicKey[message.header.dhPublicKey.length - 2];
+    const canonicalIndex = alphabet.indexOf(canonicalChar);
+    const nonCanonicalChar = alphabet[(canonicalIndex & 0x30) | ((canonicalIndex + 1) & 0x0f)];
+    const nonCanonicalKey: Message = {
+      ...message,
+      header: {
+        ...message.header,
+        dhPublicKey: `${message.header.dhPublicKey.slice(0, -2)}${nonCanonicalChar}=`,
+      },
+    };
+    await expect(decrypt(bob, nonCanonicalKey, bobSkipped)).rejects.toThrow(/canonical base64/i);
+
+    const oversizedCiphertext: Message = {
+      ...message,
+      ciphertext: 'A'.repeat(2_000_000),
+    };
+    await expect(decrypt(bob, oversizedCiphertext, bobSkipped)).rejects.toThrow(/ciphertext is too large/i);
+
+    expect(toHex(bob.rootKey)).toBe(originalRoot);
+    expect(bob.receivingChain).toBeNull();
+    expect(bobSkipped.size).toBe(0);
+  });
+
+  it('refuses to encrypt a message that its wire decoder would reject', async () => {
+    const originalMessageNumber = alice.sendingChain!.messageNumber;
+    await expect(encrypt(alice, 'x'.repeat(1024 * 1024 + 1))).rejects.toThrow(/too large/i);
+    expect(alice.sendingChain!.messageNumber).toBe(originalMessageNumber);
+  });
+
+  it('rejects a malformed header (negative, fractional, unsafe, or NaN message number)', async () => {
     const { message } = await encrypt(alice, 'hi');
-    for (const bad of [-1, 1.5, NaN]) {
+    for (const bad of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN]) {
       const forged: Message = {
         ...message,
         header: { ...message.header, messageNumber: bad },

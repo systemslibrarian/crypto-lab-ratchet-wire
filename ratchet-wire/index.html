@@ -346,7 +346,7 @@
               </div>
               <div class="handshake-actions">
                 <button id="mitm-demo-btn" type="button" class="btn btn-ghost">
-                  Simulate a tampered pre-key
+                  Alter a pre-key without re-signing
                 </button>
                 <p class="mitm-result" id="mitm-result" role="status" hidden></p>
               </div>
@@ -509,7 +509,7 @@
                 <h4>Why four DH terms?</h4>
                 <ul>
                   <li><strong>DH1</strong> mixes Alice's identity with Bob's signed pre-key — it ties the session to her long-term identity.</li>
-                  <li><strong>DH2</strong> mixes Alice's ephemeral with Bob's identity — it authenticates Bob.</li>
+                  <li><strong>DH2</strong> mixes Alice's ephemeral with the supplied Bob identity key — it binds that key into the session, but the key still needs trusted verification.</li>
                   <li><strong>DH3</strong> mixes the two ephemeral-side keys — fresh randomness for forward secrecy.</li>
                   <li><strong>DH4</strong> mixes in Bob's <em>one-time</em> pre-key — so the session stays secret even if Bob's long-term keys later leak.</li>
                 </ul>
@@ -959,8 +959,10 @@ root_new ‖ chain_key = HKDF(
                   <li>
                     <strong>Signed pre-key:</strong> Bob signs his pre-key with his long-term
                     <strong>Ed25519 identity key</strong>; Alice verifies that signature before
-                    deriving anything. A substituted prekey with an invalid signature is rejected — try the
-                    <em>"Simulate a tampered pre-key"</em> button on the Conversation tab.
+                    deriving anything. A changed prekey with an invalid signature is rejected — try the
+                    <em>"Alter a pre-key without re-signing"</em> button on the Conversation tab.
+                    This does not authenticate the supplied identity itself: compare or pin the displayed
+                    fingerprint through a trusted channel, because a complete valid bundle can be substituted.
                   </li>
                   <li>
                     <strong>One-time pre-key:</strong> a single-use key contributes a fourth DH, so
@@ -968,7 +970,7 @@ root_new ‖ chain_key = HKDF(
                   </li>
                 </ul>
                 <pre tabindex="0"><code>
-verify  Sig(IK_B, SPK_B)            ← abort on MITM
+verify  Sig(IK_B, SPK_B)            ← abort on invalid signature
 SK = HKDF( DH1 ‖ DH2 ‖ DH3 ‖ DH4 )  ← DH4 uses the one-time pre-key
                 </code></pre>
 

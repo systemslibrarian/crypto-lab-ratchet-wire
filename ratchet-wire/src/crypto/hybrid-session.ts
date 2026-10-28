@@ -16,6 +16,11 @@ import { toArrayBuffer } from './bytes';
 import type { AliceSessionInitKeys, BobPreSessionKeys, SessionInitResult, X3DHBreakdown } from './session-init';
 
 export const HYBRID_INFO = 'RatchetWire-v1_CURVE25519_SHA-256_ML-KEM-1024';
+const CONFIRMATION_TEXT = 'Ratchet Wire hybrid session confirmation';
+const CONFIRMATION_BYTES = new TextEncoder().encode(CONFIRMATION_TEXT);
+const CONFIRMATION_CIPHERTEXT_BYTES = CONFIRMATION_BYTES.length + 16;
+const ML_KEM_PUBLIC_KEY_BYTES = 1568;
+const ML_KEM_CIPHERTEXT_BYTES = 1568;
 type PrekeyKind = 'one-time' | 'last-resort';
 export interface HybridBobKeys {
   curve: BobPreSessionKeys;
@@ -73,6 +78,45 @@ function associatedData(alice: Uint8Array, bob: Uint8Array, signing: Uint8Array,
   return toArrayBuffer(concat(encode(5, alice), encode(5, bob), encode(7, signing), encode(6, kem)));
 }
 
+function requireBytes(value: unknown, label: string, length: number): asserts value is Uint8Array {
+  if (!(value instanceof Uint8Array) || value.byteLength !== length) {
+    throw new Error(`Malformed hybrid message: ${label} must be ${length} bytes.`);
+  }
+}
+
+function requireBuffer(value: unknown, label: string, length: number): asserts value is ArrayBuffer {
+  if (!(value instanceof ArrayBuffer) || value.byteLength !== length) {
+    throw new Error(`Malformed hybrid message: ${label} must be ${length} bytes.`);
+  }
+}
+
+function validateBundle(bob: HybridBundle): void {
+  requireBytes(bob.identityKey, 'DH identity key', 32);
+  requireBytes(bob.identitySigningKey, 'signing identity key', 32);
+  requireBytes(bob.signedPreKey, 'signed curve prekey', 32);
+  requireBuffer(bob.signedPreKeySignature, 'curve prekey signature', 64);
+  if (bob.oneTimePreKey !== null) requireBytes(bob.oneTimePreKey, 'curve one-time prekey', 32);
+  requireBytes(bob.kemPublicKey, 'ML-KEM public key', ML_KEM_PUBLIC_KEY_BYTES);
+  requireBuffer(bob.kemSignature, 'ML-KEM prekey signature', 64);
+  if (typeof bob.kemId !== 'string' || !/^[0-9a-f]{64}$/.test(bob.kemId)) {
+    throw new Error('Malformed hybrid message: KEM prekey identifier must be a SHA-256 hex digest.');
+  }
+}
+
+function validateInitial(initial: HybridInitialMessage): void {
+  requireBytes(initial.aliceIdentity, 'Alice identity key', 32);
+  requireBytes(initial.aliceEphemeral, 'Alice ephemeral key', 32);
+  requireBytes(initial.kemCiphertext, 'ML-KEM ciphertext', ML_KEM_CIPHERTEXT_BYTES);
+  requireBytes(initial.nonce, 'AES-GCM nonce', 12);
+  requireBuffer(initial.ciphertext, 'initial ciphertext', CONFIRMATION_CIPHERTEXT_BYTES);
+  if (typeof initial.usesCurveOneTime !== 'boolean') {
+    throw new Error('Malformed hybrid message: curve prekey selection must be boolean.');
+  }
+  if (typeof initial.kemId !== 'string' || !/^[0-9a-f]{64}$/.test(initial.kemId)) {
+    throw new Error('Malformed hybrid message: KEM prekey identifier must be a SHA-256 hex digest.');
+  }
+}
+
 /** F prefix and parameter-specific info are included; legacy X3DH is unchanged. */
 export async function deriveHybridRoot(terms: ArrayBuffer[], ss: Uint8Array): Promise<ArrayBuffer> {
   if ((terms.length !== 3 && terms.length !== 4) || terms.some(t => t.byteLength !== 32) || ss.length !== 32) {
@@ -107,6 +151,7 @@ export async function createHybridBundle(keys: HybridBobKeys, includeCurveOneTim
 export async function initiateHybridSession(alice: AliceSessionInitKeys, bob: HybridBundle): Promise<{
   session: HybridSessionResult; initial: HybridInitialMessage; trace: HybridTrace;
 }> {
+  validateBundle(bob);
   if (bob.kemKind !== 'one-time' && bob.kemKind !== 'last-resort') throw new Error('Unknown KEM prekey kind.');
   if (!(await verify(bob.identitySigningKey, bob.signedPreKeySignature, encode(5, bob.signedPreKey)))) {
     throw new Error('Hybrid setup aborted: signed curve prekey signature is invalid.');
@@ -130,7 +175,7 @@ export async function initiateHybridSession(alice: AliceSessionInitKeys, bob: Hy
     const nonce = crypto.getRandomValues(new Uint8Array(12));
     const key = await crypto.subtle.importKey('raw', root, 'AES-GCM', false, ['encrypt']);
     const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: ad }, key,
-      new TextEncoder().encode('Ratchet Wire hybrid session confirmation'));
+      CONFIRMATION_BYTES);
     const formulas = ['DH(IK_A, SPK_B)', 'DH(EK_A, IK_B)', 'DH(EK_A, SPK_B)', 'DH(EK_A, OPK_B)'];
     return {
       session: { rootKey: root, associatedData: ad },
@@ -147,9 +192,9 @@ export async function initiateHybridSession(alice: AliceSessionInitKeys, bob: Hy
 
 /** Only consume one-time keys after the initial AEAD authenticates successfully. */
 export async function acceptHybridSession(keys: HybridBobKeys, initial: HybridInitialMessage): Promise<HybridSessionResult> {
+  validateInitial(initial);
   if (keys.kemConsumed || (initial.usesCurveOneTime && keys.curveConsumed)) throw new Error('One-time prekey already consumed.');
   if (initial.kemKind !== keys.kind || initial.kemId !== await id(keys.kem.publicKey)) throw new Error('Unknown KEM prekey identifier or kind.');
-  if (initial.kemCiphertext.length !== ml_kem1024.lengths.cipherText || initial.nonce.length !== 12) throw new Error('Malformed hybrid initial message.');
   const b = keys.curve;
   const terms: ArrayBuffer[] = [];
   let ss: Uint8Array | undefined;
@@ -164,7 +209,17 @@ export async function acceptHybridSession(keys: HybridBobKeys, initial: HybridIn
     const ad = associatedData(initial.aliceIdentity, b.identityKeyPair.publicKey, b.identitySigningKeyPair.publicKey, keys.kem.publicKey);
     const key = await crypto.subtle.importKey('raw', root, 'AES-GCM', false, ['decrypt']);
     const confirmation = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toArrayBuffer(initial.nonce), additionalData: ad }, key, initial.ciphertext);
-    new Uint8Array(confirmation).fill(0);
+    const confirmationBytes = new Uint8Array(confirmation);
+    try {
+      if (
+        confirmationBytes.length !== CONFIRMATION_BYTES.length ||
+        !confirmationBytes.every((byte, index) => byte === CONFIRMATION_BYTES[index])
+      ) {
+        throw new Error('Hybrid setup aborted: initial confirmation plaintext is invalid.');
+      }
+    } finally {
+      confirmationBytes.fill(0);
+    }
     if (initial.usesCurveOneTime) { b.oneTimePreKeyPair.privateKey.fill(0); keys.curveConsumed = true; }
     if (keys.kind === 'one-time') { keys.kem.secretKey.fill(0); keys.kemConsumed = true; }
     return { rootKey: root, associatedData: ad };

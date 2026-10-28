@@ -29,7 +29,8 @@ Ratchet Wire demonstrates:
   sends (ratchet key, message number Ns, previous-chain-length PN, IV).
 - **Session Handshake** — the live signed-pre-key check and the four Diffie-Hellman
   terms combining via HKDF into the session root key. Plus a one-click
-  *"Simulate a tampered pre-key"* showing the man-in-the-middle defense reject it.
+  *"Alter a pre-key without re-signing"* check, alongside the separate warning
+  that the supplied identity fingerprint still needs trusted verification.
 - **Out of Order** — deliver a batch of messages in any order and watch Bob's
   skipped-key store fill and drain.
 - **Forward Secrecy** — steal Alice's chain key at any point and see the one-way
@@ -71,12 +72,12 @@ The Double Ratchet combines:
 1. **Symmetric-Key Ratchet** (KDF Chain)
    - Derives unique message keys from a chain key using HKDF
    - Provides forward secrecy: each message key is independent
-   - Message keys are deleted immediately after use
+   - Message keys leave protocol state after use and their demo buffers are best-effort cleared
 
 2. **DH Ratchet** (Key Agreement Chain)
    - Uses X25519 ephemeral key pairs
    - Derives a new root key when the sender's key changes
-   - Provides break-in recovery: a compromised root key cannot produce future keys
+   - Provides break-in recovery after a fresh uncompromised DH step excludes a passive attacker
 
 ### What this demo implements
 
@@ -85,14 +86,15 @@ The Double Ratchet combines:
 - ✓ HKDF key derivation
 - ✓ AES-256-GCM message encryption with the header bound as associated data
 - ✓ Out-of-order message handling with a bounded skipped-key store
-- ✓ **Authenticated X3DH**: Ed25519-signed pre-keys (verified before use) plus a
-  one-time pre-key for the fourth DH
+- ✓ **Signed-prekey-checked X3DH**: Ed25519-signed pre-keys (verified before use)
+  plus a one-time pre-key for the fourth DH; identity verification remains external
 
 ### Simplified vs. Production
 
 **Implemented here:**
-- Signed pre-key signature verification — a tampered/substituted pre-key is
-  rejected (see the *"Simulate a tampered pre-key"* button in the app)
+- Signed pre-key signature verification — changing a pre-key without a matching
+  signature is rejected. A fully substituted valid bundle is accepted unless the
+  displayed identity is pinned or compared through a trusted channel.
 - One-time pre-key contributing the 4th DH (`SK = HKDF(DH1‖DH2‖DH3‖DH4)`)
 - Out-of-order delivery, skipped-key bounds, and AEAD-bound headers
 
@@ -136,12 +138,12 @@ correcting it would move every pinned test vector and every key the UI displays.
 src/
 ├── crypto/
 │   ├── x25519.ts              # X25519 key agreement (+ low-order rejection)
-│   ├── ed25519.ts             # Ed25519 signatures (handshake authentication)
+│   ├── ed25519.ts             # Ed25519 signed-prekey integrity checks
 │   ├── hkdf.ts                # HKDF key derivation + KDF_RK
 │   ├── symmetric-ratchet.ts   # Message key derivation
 │   ├── dh-ratchet.ts          # Root key derivation
 │   ├── double-ratchet.ts      # Full encryption/decryption
-│   └── session-init.ts        # Authenticated X3DH setup
+│   └── session-init.ts        # Signed-prekey X3DH setup
 ├── __tests__/
 │   ├── primitives.test.ts
 │   ├── ed25519.test.ts
@@ -162,8 +164,8 @@ npm run test
 Tests verify:
 - RFC 5869 HKDF test vectors pass (Appendix A.1 and A.2)
 - X25519 key agreement produces matching shared secrets; low-order keys rejected
-- Ed25519 signatures authenticate the handshake; tampered/substituted pre-keys
-  and wrong-identity signatures are rejected
+- Ed25519 signatures reject a changed pre-key under the supplied signing identity;
+  tests also prove that replacing the whole valid bundle requires external identity verification
 - Symmetric ratchet produces unique, non-recoverable keys
 - Full end-to-end encryption with out-of-order delivery
 - A forged message cannot corrupt receiver state; oversized/malformed headers
