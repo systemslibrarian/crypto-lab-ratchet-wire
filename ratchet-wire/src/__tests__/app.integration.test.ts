@@ -17,6 +17,8 @@ import { dirname, resolve } from 'node:path';
 import { webcrypto } from 'node:crypto';
 import { describe, it, expect, beforeEach } from 'vitest';
 
+import { bodyWithoutScripts } from './page-body';
+
 // Some happy-dom builds expose `crypto` without a full SubtleCrypto; make sure
 // the Web Crypto used for HKDF/AES-GCM/SHA-256 is Node's complete implementation.
 if (!globalThis.crypto?.subtle) {
@@ -40,8 +42,8 @@ if (!globalThis.localStorage) {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const indexHtml = readFileSync(resolve(here, '../../index.html'), 'utf8');
-const bodyInner = (indexHtml.match(/<body>([\s\S]*?)<\/body>/)?.[1] ?? '')
-  .replace(/<script[\s\S]*?<\/script>/g, '');
+
+const bodyInner = bodyWithoutScripts(indexHtml);
 
 /** Poll until `predicate()` is truthy or the timeout elapses. */
 async function waitFor(predicate: () => boolean, timeoutMs = 4000): Promise<void> {

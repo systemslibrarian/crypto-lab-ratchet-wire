@@ -4,7 +4,7 @@ import { generateKeyPair } from '../crypto/x25519';
 import { generateSigningKeyPair } from '../crypto/ed25519';
 import { createAliceRatchetState, createBobRatchetState } from '../crypto/session-init';
 import { encrypt, decrypt, type SkippedKeys } from '../crypto/double-ratchet';
-import { createHybridBobKeys, createHybridBundle, initiateHybridSession, acceptHybridSession, deriveHybridRoot, HYBRID_INFO } from '../crypto/hybrid-session';
+import { createHybridBobKeys, createHybridBundle, initiateHybridSession, acceptHybridSession, deriveHybridRoot, HYBRID_INFO, ML_KEM_CIPHERTEXT_BYTES, ML_KEM_PUBLIC_KEY_BYTES } from '../crypto/hybrid-session';
 
 async function fixture(kind: 'one-time' | 'last-resort' = 'one-time', curveOneTime = true) {
   const curve = { identityKeyPair: await generateKeyPair(), identitySigningKeyPair: await generateSigningKeyPair(),
@@ -14,6 +14,17 @@ async function fixture(kind: 'one-time' | 'last-resort' = 'one-time', curveOneTi
   const alice = { identityKeyPair: await generateKeyPair(), ephemeralKeyPair: await generateKeyPair() };
   return { keys, bundle, alice };
 }
+
+describe('the ML-KEM sizes the validation enforces', () => {
+  it('are the FIPS 203 ML-KEM-1024 sizes, taken from the library', () => {
+    // The bundle and initial-message checks are only about ML-KEM-1024 while
+    // these hold. FIPS 203 Table 3: encapsulation key 1568 bytes, ciphertext
+    // 1568 bytes. Written here so a library whose numbers moved reddens a test
+    // rather than quietly widening a size check.
+    expect(ML_KEM_PUBLIC_KEY_BYTES).toBe(1568);
+    expect(ML_KEM_CIPHERTEXT_BYTES).toBe(1568);
+  });
+});
 
 describe('real PQXDH-style hybrid setup', () => {
   it('matches an independent Node HKDF reference including F, ordered DH terms, SS and parameters', async () => {
