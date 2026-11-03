@@ -19,8 +19,24 @@ export const HYBRID_INFO = 'RatchetWire-v1_CURVE25519_SHA-256_ML-KEM-1024';
 const CONFIRMATION_TEXT = 'Ratchet Wire hybrid session confirmation';
 const CONFIRMATION_BYTES = new TextEncoder().encode(CONFIRMATION_TEXT);
 const CONFIRMATION_CIPHERTEXT_BYTES = CONFIRMATION_BYTES.length + 16;
-const ML_KEM_PUBLIC_KEY_BYTES = 1568;
-const ML_KEM_CIPHERTEXT_BYTES = 1568;
+/**
+ * Read from the library rather than written down. The size check these
+ * replaced asked `ml_kem1024.lengths.cipherText`; a pair of 1568 literals
+ * could drift from it in silence, and a length check that has drifted is a
+ * check that is no longer about ML-KEM-1024. `lengths` is typed as partial, so
+ * a missing entry is refused here instead of becoming `undefined` inside a
+ * comparison that would then accept anything. `hybrid-session.test.ts` pins
+ * the FIPS 203 values these must equal.
+ */
+function kemLength(name: 'publicKey' | 'cipherText'): number {
+  const value = ml_kem1024.lengths[name];
+  if (typeof value !== 'number') {
+    throw new Error(`ML-KEM-1024 reports no ${name} length; refusing to validate against an unknown size.`);
+  }
+  return value;
+}
+export const ML_KEM_PUBLIC_KEY_BYTES = kemLength('publicKey');
+export const ML_KEM_CIPHERTEXT_BYTES = kemLength('cipherText');
 type PrekeyKind = 'one-time' | 'last-resort';
 export interface HybridBobKeys {
   curve: BobPreSessionKeys;
