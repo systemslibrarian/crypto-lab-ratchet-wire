@@ -89,7 +89,7 @@ const fp = (b: Uint8Array) => Array.from(b.slice(0, 8), x => x.toString(16).padS
 async function id(key: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', toArrayBuffer(key))), x => x.toString(16).padStart(2, '0')).join('');
 }
-function associatedData(alice: Uint8Array, bob: Uint8Array, signing: Uint8Array, kem: Uint8Array): ArrayBuffer {
+function pqxdhStyleAssociatedData(alice: Uint8Array, bob: Uint8Array, signing: Uint8Array, kem: Uint8Array): ArrayBuffer {
   // PQXDH identity AD plus additional model identity and KEM binding.
   return toArrayBuffer(concat(encode(5, alice), encode(5, bob), encode(7, signing), encode(6, kem)));
 }
@@ -187,7 +187,7 @@ export async function initiateHybridSession(alice: AliceSessionInitKeys, bob: Hy
     const encapsulated = ml_kem1024.encapsulate(bob.kemPublicKey);
     ss = encapsulated.sharedSecret;
     root = await deriveHybridRoot(terms, ss);
-    const ad = associatedData(alice.identityKeyPair.publicKey, bob.identityKey, bob.identitySigningKey, bob.kemPublicKey);
+    const ad = pqxdhStyleAssociatedData(alice.identityKeyPair.publicKey, bob.identityKey, bob.identitySigningKey, bob.kemPublicKey);
     const nonce = crypto.getRandomValues(new Uint8Array(12));
     const key = await crypto.subtle.importKey('raw', root, 'AES-GCM', false, ['encrypt']);
     const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: ad }, key,
@@ -222,7 +222,7 @@ export async function acceptHybridSession(keys: HybridBobKeys, initial: HybridIn
     if (initial.usesCurveOneTime) terms.push(await deriveSharedSecret(b.oneTimePreKeyPair.privateKey, initial.aliceEphemeral));
     ss = ml_kem1024.decapsulate(initial.kemCiphertext, keys.kem.secretKey);
     root = await deriveHybridRoot(terms, ss);
-    const ad = associatedData(initial.aliceIdentity, b.identityKeyPair.publicKey, b.identitySigningKeyPair.publicKey, keys.kem.publicKey);
+    const ad = pqxdhStyleAssociatedData(initial.aliceIdentity, b.identityKeyPair.publicKey, b.identitySigningKeyPair.publicKey, keys.kem.publicKey);
     const key = await crypto.subtle.importKey('raw', root, 'AES-GCM', false, ['decrypt']);
     const confirmation = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toArrayBuffer(initial.nonce), additionalData: ad }, key, initial.ciphertext);
     const confirmationBytes = new Uint8Array(confirmation);
