@@ -271,7 +271,7 @@ const QUIZ_QUESTIONS: QuizQuestion[] = [
     ],
     answer: 1,
     explain:
-      'That is break-in recovery: the next direction change mixes in brand-new X25519 keys the attacker does not hold. Step through it on the Break-In Recovery tab.',
+      "That is break-in recovery, and it is Bob replacing his OWN ratchet key pair that heals the session — the second half of that step. A full state compromise includes Bob's current ratchet private key, so the attacker can still compute the first half, the DH with Alice's new public key, and read Alice's next message (Double Ratchet specification §2.3 and §3.5). Step through it on the Break-In Recovery tab, which steals only Bob's root and chain keys.",
   },
 ];
 
@@ -1575,7 +1575,7 @@ export class RatchetWireApp {
         `Bob's DH ratchet count: ${this.recovery.bob.dhRatchetCount}\n` +
         `Decrypted: "${r.plaintext}"` +
         (rotated
-          ? " — the root key was replaced by KDF_RK over a DH with Alice's new ratchet key, which the attacker's snapshot cannot reproduce."
+          ? " — the root key was replaced by two KDF_RK steps: a DH between Alice's new ratchet key and Bob's old private key, then a DH with the fresh key pair Bob generated here. A snapshot of root and chain keys reproduces neither; a stolen ratchet private key would have reproduced the first."
           : ' — but the root key did not move, so nothing was recovered. This is a bug, not a lesson.')
     );
 

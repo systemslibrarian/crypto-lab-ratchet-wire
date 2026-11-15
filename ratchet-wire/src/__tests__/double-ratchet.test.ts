@@ -8,7 +8,9 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { encrypt, decrypt, Message, SkippedKeys } from '../crypto/double-ratchet';
-import { RatchetState } from '../crypto/dh-ratchet';
+import { dhRatchet, RatchetState } from '../crypto/dh-ratchet';
+import { kdfRk } from '../crypto/hkdf';
+import { deriveSharedSecret } from '../crypto/x25519';
 import { establishSession, toHex } from './session-helper';
 
 describe('Double Ratchet Integration', () => {
@@ -240,6 +242,41 @@ describe('Double Ratchet Integration', () => {
 
     expect(bob.dhRatchetCount).toBe(compromisedCount + 1);
     expect(toHex(bob.rootKey)).not.toBe(compromisedRootKey);
+  });
+
+  it("locates the healing in Bob's fresh key pair, not in Alice's new key", async () => {
+    // The page used to credit break-in recovery to "fresh DH with Alice's new
+    // ephemeral key", which is only true of a snapshot that excludes Bob's
+    // ratchet private key. DHRatchet derives the RECEIVING chain from Bob's OLD
+    // private key (Double Ratchet specification §3.5), so a full state
+    // compromise still reads Alice's next message; §2.3 locates the healing in
+    // the compromised private key "eventually be[ing] replaced with an
+    // uncompromised one" — here, in the same step, one line later.
+    await aliceToBob('hi');
+    await bobToAlice('hey'); // Alice now holds a ratchet key Bob has not seen.
+
+    // A FULL state compromise: root key and the current ratchet private key.
+    const stolenRootKey = bob.rootKey.slice(0);
+    const stolenPrivateKey = new Uint8Array(bob.myDHKeyPair.privateKey);
+    const aliceNewPublic = new Uint8Array(alice.myDHKeyPair.publicKey);
+
+    const ratcheted = await dhRatchet(bob, aliceNewPublic);
+
+    // First half of the step, recomputed from the stolen material alone: the
+    // attacker reaches exactly the chain that decrypts Alice's next message.
+    const attacker = await kdfRk(
+      stolenRootKey,
+      await deriveSharedSecret(stolenPrivateKey, aliceNewPublic)
+    );
+    expect(toHex(attacker.chainKey)).toBe(toHex(ratcheted.receivingChain!.chainKey));
+
+    // Second half — over the key pair Bob generated inside the step — is where
+    // the attacker stops: neither the new root key nor Bob's sending chain.
+    expect(toHex(attacker.rootKey)).not.toBe(toHex(ratcheted.rootKey));
+    expect(toHex(attacker.chainKey)).not.toBe(toHex(ratcheted.sendingChain!.chainKey));
+    expect(Array.from(ratcheted.myDHKeyPair.publicKey)).not.toEqual(
+      Array.from(bob.myDHKeyPair.publicKey)
+    );
   });
 
   it('completes a 10-message bidirectional conversation', async () => {

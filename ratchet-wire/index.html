@@ -731,6 +731,20 @@
                         <li>Past messages (message keys already deleted via forward secrecy)</li>
                         <li>Messages after Alice triggers DH ratchet</li>
                       </ul>
+                      <p class="recovery-note">
+                        That second line holds because this exercise steals Bob's root key and
+                        chain keys and nothing else. An attacker who also held Bob's current
+                        ratchet <em>private</em> key would compute the first half of the next DH
+                        step — the one that uses that old private key with Alice's new public key
+                        — and read Alice's next message too. What shuts such an attacker out is
+                        the fresh key pair Bob generates in the same step
+                        (<a
+                          href="https://signal.org/docs/specifications/doubleratchet/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          >Double Ratchet specification</a
+                        >, §2.3 and §3.5).
+                      </p>
                     </div>
                   </div>
                 </section>
@@ -760,8 +774,10 @@
                       <span aria-hidden="true">✓ </span>Break-in recovery complete!
                     </p>
                     <p class="recovery-explanation">
-                      Bob's new root key is derived from fresh DH with Alice's new ephemeral key.
-                      The attacker cannot compute this without the private keys.
+                      Bob's new root key comes from two DH outputs, not one: the first between
+                      Alice's new ephemeral key and Bob's <em>old</em> ratchet private key, the
+                      second between Alice's key and the fresh pair Bob generates on receipt. The
+                      snapshot from step 1 holds neither private key, so it can compute neither.
                     </p>
                   </div>
                 </section>
@@ -774,8 +790,10 @@
                 </p>
                 <ul>
                   <li>
-                    <strong>DH Ratchet:</strong> Each DH step uses fresh ephemeral keys, making it
-                    impossible for an attacker holding old keys to derive new root keys.
+                    <strong>DH Ratchet:</strong> Every step ends by generating a fresh ratchet key
+                    pair for the receiver, and the root key it leaves behind depends on that pair.
+                    An attacker holding the old state — even the receiver's old ratchet private
+                    key, which still computes the first half of the step — cannot derive it.
                   </li>
                   <li>
                     <strong>Asymmetry:</strong> An attacker needs the <em>private keys</em> to
