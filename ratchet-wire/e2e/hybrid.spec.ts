@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { auditControlNames, formatControlNameFailures } from './control-names';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('.');
@@ -81,6 +82,10 @@ test('hybrid panels remain readable and accessible at phone and desktop widths',
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
       const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
       expect(results.violations).toEqual([]);
+      // axe's `label` rule accepts a bare `placeholder` as an accessible name, so a
+      // deleted label can leave this gate green. See `control-names.ts`.
+      const unnamed = formatControlNameFailures(await auditControlNames(page));
+      expect(unnamed, `form controls named only by placeholder/title at ${width}px on tab ${tab}`).toEqual([]);
     }
   }
 });
