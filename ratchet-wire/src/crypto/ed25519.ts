@@ -10,7 +10,7 @@
  * be pinned or compared through an authenticated channel; otherwise an attacker
  * can replace the entire bundle with another internally valid one.
  *
- * Implemented with the audited `@noble/curves` library rather than Web Crypto:
+ * Implemented with the `@noble/curves` library rather than Web Crypto:
  * browser Web Crypto support for Ed25519 is very recent (Chrome 137, 2025) and
  * absent from many installed browsers, so using it would make the handshake
  * throw on load. `@noble` behaves identically in every browser and in Node.

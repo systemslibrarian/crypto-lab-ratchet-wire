@@ -4,7 +4,7 @@
  * Reference: RFC 7748 - Elliptic Curves for Security
  * https://tools.ietf.org/html/rfc7748
  *
- * Implemented with the audited, pure-JavaScript `@noble/curves` library rather
+ * Implemented with the pure-JavaScript `@noble/curves` library rather
  * than the Web Crypto `X25519` algorithm. Web Crypto only gained X25519 very
  * recently (Chrome 133, 2025) and support is uneven across browsers, so relying
  * on it would make the demo fail to load on perfectly common setups. `@noble`
@@ -14,6 +14,11 @@
  * Keys are represented as raw 32-byte `Uint8Array`s (the natural wire format).
  * The functions are kept `async` so call sites read the same as the rest of the
  * crypto layer (HKDF/AES-GCM, which remain genuinely async via Web Crypto).
+ *
+ * ON "AUDITED": @noble/curves records its latest independent audit "at version
+ * 2.3.0, in Aug 2026, by [Trail of Bits]", scope "everything". This lab pins
+ * ^2.4.0, one release past that, so the version shipped here is not itself
+ * covered. What is checked regardless is RFC 7748 §5.2's own vectors.
  */
 
 import { x25519 } from '@noble/curves/ed25519.js';

@@ -6,7 +6,7 @@
  * invalid-signature demonstration.
  *
  * This is the closest proxy to "does it work in a browser?" available without a
- * live browser: the crypto path is the audited pure-JS @noble code (identical in
+ * live browser: the crypto path is the same pure-JS @noble code (identical in
  * Node and the browser), and the DOM is driven through the same elements and
  * event handlers the page wires up.
  */
