@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { webcrypto } from 'node:crypto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { bodyWithoutScripts } from './page-body';
 
@@ -59,6 +59,36 @@ describe('App integration (DOM smoke test)', () => {
     localStorage.removeItem('guideHidden');
     document.documentElement.setAttribute('data-theme', 'dark');
     document.body.innerHTML = bodyInner;
+  });
+
+  it.each([false, true])('reports the full root comparison when only the last byte can change (%s)', async (changed) => {
+    const { RatchetWireApp } = await import('../main');
+    const protocol = await import('../crypto/double-ratchet');
+    await new RatchetWireApp().init();
+    const button = (id: string) => document.getElementById(id) as HTMLButtonElement;
+    button('compromise-btn').click();
+    await waitFor(() => !button('recovery-send-btn').disabled);
+    button('recovery-send-btn').click();
+    await waitFor(() => !button('recovery-complete-btn').disabled);
+
+    const decrypt = protocol.decrypt;
+    const resultOverride = vi.spyOn(protocol, 'decrypt').mockImplementationOnce(async (...args) => {
+      const previousRoot = args[0].rootKey.slice(0);
+      const result = await decrypt(...args);
+      if (changed) new Uint8Array(previousRoot)[previousRoot.byteLength - 1] ^= 1;
+      return { ...result, newState: { ...result.newState, rootKey: previousRoot } };
+    });
+    try {
+      button('recovery-complete-btn').click();
+      const status = document.getElementById('recovery-complete-status')!;
+      await waitFor(() => !status.hidden);
+      const verdict = status.querySelector<HTMLElement>('#recovery-verdict')!;
+      expect(verdict.textContent).toContain(changed ? 'root key changed' : 'root key is unchanged');
+      expect(verdict.className).toBe(changed ? 'success' : 'warning');
+      expect(status.querySelector<HTMLElement>('.recovery-explanation')!.hidden).toBe(!changed);
+    } finally {
+      resultOverride.mockRestore();
+    }
   });
 
   it('the guided tour steps forward and drives the tabs', async () => {

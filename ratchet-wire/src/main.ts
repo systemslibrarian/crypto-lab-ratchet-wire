@@ -406,7 +406,6 @@ export class RatchetWireApp {
   // Dedicated session for the break-in recovery simulation (kept separate so it
   // is deterministic regardless of what the user did in the main conversation).
   private recovery: Session | null = null;
-  private recoverySnapshotRoot: string | null = null;
   private recoveryPending: Message | null = null;
 
   // Out-of-order delivery demo (separate session for determinism).
@@ -636,7 +635,6 @@ export class RatchetWireApp {
     this.oooLog = '';
     this.fs = null;
     this.recovery = null;
-    this.recoverySnapshotRoot = null;
     this.recoveryPending = null;
     this.quizAnswers = QUIZ_QUESTIONS.map(() => null);
 
@@ -1521,10 +1519,9 @@ export class RatchetWireApp {
     await this.recoveryDeliver('Alice', '🔑 Session handshake');
     await this.recoveryDeliver('Bob', '🔑 Acknowledged');
 
-    this.recoverySnapshotRoot = hex(this.recovery.bob.rootKey, 16);
     this.setRecoveryDetail(
       'compromise-status',
-      `Captured Bob's root key: ${this.recoverySnapshotRoot}…`
+      `Captured Bob's root key: ${hex(this.recovery.bob.rootKey, 16)}…`
     );
 
     (document.getElementById('compromise-status') as HTMLDivElement).hidden = false;
@@ -1558,35 +1555,34 @@ export class RatchetWireApp {
   private async recoveryBobReceives() {
     if (!this.recovery || !this.recoveryPending) return;
 
+    const previousRoot = this.recovery.bob.rootKey;
+    const oldRoot = hex(previousRoot, previousRoot.byteLength);
     const r = await decrypt(this.recovery.bob, this.recoveryPending, this.recovery.bobSkipped);
     this.recovery.bob = r.newState;
     this.recovery.bobSkipped = r.skippedKeys;
 
-    // Whether the root key actually moved is read off the two values, not
-    // assumed from having pressed the button. If a DH ratchet had failed to
-    // fire, "New root (safe)" would otherwise print over an unchanged key and
-    // announce a recovery that never happened.
-    const newRoot = hex(this.recovery.bob.rootKey, 16);
-    const rotated = newRoot !== this.recoverySnapshotRoot;
+    const currentRoot = this.recovery.bob.rootKey;
+    const newRoot = hex(currentRoot, currentRoot.byteLength);
+    const rotated = oldRoot !== newRoot;
+    const verdict = rotated
+      ? "Bob's root key changed."
+      : "Bob's root key is unchanged. This run did not demonstrate recovery.";
+    const status = document.getElementById('recovery-complete-status')!;
+    const heading = status.querySelector<HTMLElement>('#recovery-verdict')!;
+    heading.textContent = verdict;
+    heading.className = rotated ? 'success' : 'warning';
+    status.querySelector<HTMLElement>('.recovery-explanation')!.hidden = !rotated;
     this.setRecoveryDetail(
       'recovery-complete-status',
-      `Old root (attacker has): ${this.recoverySnapshotRoot}…\n` +
-        `New root${rotated ? ' (safe)' : ' (UNCHANGED — no DH ratchet fired)'}:         ${newRoot}…\n` +
+      `Old root prefix: ${oldRoot.slice(0, 32)}…\n` +
+        `New root prefix: ${newRoot.slice(0, 32)}…\n` +
         `Bob's DH ratchet count: ${this.recovery.bob.dhRatchetCount}\n` +
-        `Decrypted: "${r.plaintext}"` +
-        (rotated
-          ? " — the root key was replaced by two KDF_RK steps: a DH between Alice's new ratchet key and Bob's old private key, then a DH with the fresh key pair Bob generated here. A snapshot of root and chain keys reproduces neither; a stolen ratchet private key would have reproduced the first."
-          : ' — but the root key did not move, so nothing was recovered. This is a bug, not a lesson.')
+        `Decrypted: "${r.plaintext}"`
     );
 
-    (document.getElementById('recovery-complete-status') as HTMLDivElement).hidden = false;
+    status.hidden = false;
     (document.getElementById('recovery-complete-btn') as HTMLButtonElement).disabled = true;
-
-    this.announce(
-      rotated
-        ? "Break-in recovery complete. Bob's root key changed; the attacker is locked out."
-        : "Break-in recovery did not complete: Bob's root key is unchanged."
-    );
+    this.announce(verdict);
   }
 
   /** Deliver one message within the recovery session. */

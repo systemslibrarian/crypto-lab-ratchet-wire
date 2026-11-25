@@ -723,8 +723,8 @@
                     <div class="attacker-access">
                       <p><strong>Attacker can read:</strong></p>
                       <ul>
-                        <li>Current and future messages from Bob's sending chain</li>
-                        <li>Current and future messages from Alice's receiving chain</li>
+                        <li>Bob → Alice messages using the captured sending chain</li>
+                        <li>Alice → Bob messages using Bob's receiving chain</li>
                       </ul>
                       <p><strong>Attacker cannot read:</strong></p>
                       <ul>
@@ -763,21 +763,18 @@
                   </div>
                 </section>
 
-                <section class="sim-section" aria-label="Step 3: Recovery complete">
-                  <h4>Step 3: Recovery Complete</h4>
+                <section class="sim-section" aria-label="Step 3: Check the new root key">
+                  <h4>Step 3: Check the new root key</h4>
                   <button id="recovery-complete-btn" class="btn btn-success" disabled aria-describedby="recovery-complete-desc">
                     <span aria-hidden="true">🔒 </span>Bob Receives (DH Ratchet)
                   </button>
-                  <p id="recovery-complete-desc" class="sr-only">Bob receives the message and performs a DH ratchet, locking out the attacker</p>
+                  <p id="recovery-complete-desc" class="sr-only">Bob receives the message. Compare his root key before and after the DH ratchet.</p>
                   <div class="sim-state" id="recovery-complete-status" hidden>
-                    <p class="success" role="status">
-                      <span aria-hidden="true">✓ </span>Break-in recovery complete!
-                    </p>
-                    <p class="recovery-explanation">
-                      Bob's new root key comes from two DH outputs, not one: the first between
-                      Alice's new ephemeral key and Bob's <em>old</em> ratchet private key, the
-                      second between Alice's key and the fresh pair Bob generates on receipt. The
-                      snapshot from step 1 holds neither private key, so it can compute neither.
+                    <p id="recovery-verdict" role="status"></p>
+                    <p class="recovery-explanation" hidden>
+                      The exercise models a snapshot limited to the captured root and chain keys.
+                      Bob's first root update uses his old private ratchet key and Alice's new public key.
+                      His second update uses a freshly generated private ratchet key.
                     </p>
                   </div>
                 </section>
